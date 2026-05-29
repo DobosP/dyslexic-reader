@@ -1,0 +1,46 @@
+name: dyslexic_reader
+description: "Dyslexia-friendly reader: open PDFs and text and re-render them with adjustable spacing, themes, a reading ruler, and read-aloud with word highlighting."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # State management (compile-safe, testable) — see docs/ARCHITECTURE.md
+  flutter_riverpod: ^2.5.1
+  # Lightweight persistence for ReadingPrefs
+  shared_preferences: ^2.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Bundled reading fonts. All SIL Open Font License (OFL); license texts live
+  # alongside the files in assets/fonts/*-OFL.txt. Spacing matters more than the
+  # font itself (see docs/RESEARCH.md), so these are options, not a "fix".
+  fonts:
+    - family: OpenDyslexic
+      fonts:
+        - asset: assets/fonts/OpenDyslexic-Regular.otf
+        - asset: assets/fonts/OpenDyslexic-Bold.otf
+          weight: 700
+        - asset: assets/fonts/OpenDyslexic-Italic.otf
+          style: italic
+    - family: AtkinsonHyperlegible
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegible-Regular.ttf
+        - asset: assets/fonts/AtkinsonHyperlegible-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/AtkinsonHyperlegible-Italic.ttf
+          style: italic
+    - family: Lexend
+      fonts:
+        - asset: assets/fonts/Lexend-Variable.ttf
