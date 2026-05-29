@@ -29,6 +29,10 @@ strongest-evidence features first.
 Redefined with the product owner. Building in this order:
 - [x] **Pages & progress**: paginate into screen-fit pages (swipe/turn); remember
       reading position (char-offset based, survives font changes); bookmarks
+- [x] **Fast loading**: incremental (lazy) pagination — first page(s) open
+      instantly, the rest fill in the background and just-in-time on swipe
+- [x] **Updatable debug installs**: stable committed debug key + auto versionCode
+      so debug APKs install over each other; open-with/share also accepts text
 - [ ] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
       overview; tap a chapter to jump to it
 - [ ] **Manual highlighting**: finger-select text, colored highlights saved per
