@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform/incoming_file_channel.dart';
 import '../../domain/models/library_entry.dart';
 import '../../domain/reflow/tokenizer.dart';
 import '../reader/original_pdf_screen.dart';
@@ -42,11 +43,112 @@ Future<void> openLibraryEntry(
   }
 }
 
-class LibraryScreen extends ConsumerWidget {
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen>
+    with WidgetsBindingObserver {
+  bool _checkingIncoming = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => unawaited(_checkIncoming()));
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_checkIncoming());
+  }
+
+  /// Handle a file the app was opened with (open-with / share intent).
+  Future<void> _checkIncoming() async {
+    if (_checkingIncoming) return;
+    _checkingIncoming = true;
+    try {
+      final incoming = await const IncomingFileChannel().consume();
+      if (incoming == null || !mounted) return;
+      await _runImport(
+        () => ref
+            .read(libraryControllerProvider.notifier)
+            .importFromPath(incoming.path, incoming.name),
+      );
+    } finally {
+      _checkingIncoming = false;
+    }
+  }
+
+  Future<void> _pickAndImport() async {
+    final controller = ref.read(libraryControllerProvider.notifier);
+    XFile? file;
+    try {
+      file = await controller.pickFile();
+    } catch (_) {
+      if (mounted) _snack('Could not open the file picker.');
+      return;
+    }
+    if (file == null) return; // cancelled
+    final picked = file;
+    await _runImport(() => controller.importPicked(picked));
+  }
+
+  /// Run [doImport] with a progress spinner, then open the result.
+  Future<void> _runImport(Future<LibraryEntry> Function() doImport) async {
+    if (!mounted) return;
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    ));
+
+    LibraryEntry? entry;
+    Object? failure;
+    try {
+      entry = await doImport();
+    } catch (e) {
+      failure = e;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // dismiss progress
+
+    if (failure != null) {
+      _snack('Import failed: $failure');
+      return;
+    }
+    if (entry != null) {
+      if (!entry.hasTextLayer) {
+        _snack(
+            'No text layer found — showing the original pages. OCR is coming later.');
+      }
+      await openLibraryEntry(context, ref, entry);
+    }
+  }
+
+  void _openSample() {
+    final doc = Tokenizer.parse(kSampleText, title: kSampleTitle);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => ReaderScreen(document: doc)),
+    );
+  }
+
+  void _snack(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final library = ref.watch(libraryControllerProvider);
 
@@ -77,7 +179,7 @@ class LibraryScreen extends ConsumerWidget {
             icon: Icons.file_open_outlined,
             title: 'Open a PDF or text file',
             subtitle: 'Import a .pdf or .txt from your device',
-            onTap: () => _import(context, ref),
+            onTap: _pickAndImport,
           ),
           _ActionCard(
             icon: Icons.content_paste_outlined,
@@ -91,7 +193,7 @@ class LibraryScreen extends ConsumerWidget {
             icon: Icons.menu_book_outlined,
             title: 'Read the sample',
             subtitle: 'Try the reading controls right away',
-            onTap: () => _openSample(context),
+            onTap: _openSample,
           ),
           library.when(
             loading: () => const Padding(
@@ -116,59 +218,6 @@ class LibraryScreen extends ConsumerWidget {
       ),
     );
   }
-
-  void _openSample(BuildContext context) {
-    final doc = Tokenizer.parse(kSampleText, title: kSampleTitle);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => ReaderScreen(document: doc)),
-    );
-  }
-
-  Future<void> _import(BuildContext context, WidgetRef ref) async {
-    final controller = ref.read(libraryControllerProvider.notifier);
-
-    XFile? file;
-    try {
-      file = await controller.pickFile();
-    } catch (_) {
-      if (context.mounted) _snack(context, 'Could not open the file picker.');
-      return;
-    }
-    if (file == null) return; // cancelled
-    if (!context.mounted) return;
-
-    unawaited(showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    ));
-
-    LibraryEntry? entry;
-    Object? failure;
-    try {
-      entry = await controller.importPicked(file);
-    } catch (e) {
-      failure = e;
-    }
-
-    if (!context.mounted) return;
-    Navigator.of(context).pop(); // dismiss progress
-
-    if (failure != null) {
-      _snack(context, 'Import failed: $failure');
-      return;
-    }
-    if (entry != null) {
-      if (!entry.hasTextLayer) {
-        _snack(context,
-            'No text layer found — showing the original pages. OCR is coming later.');
-      }
-      await openLibraryEntry(context, ref, entry);
-    }
-  }
-
-  void _snack(BuildContext context, String message) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
 class _ActionCard extends StatelessWidget {

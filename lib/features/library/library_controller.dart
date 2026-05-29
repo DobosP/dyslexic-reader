@@ -63,14 +63,19 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return openFile(acceptedTypeGroups: [group]);
   }
 
-  /// Extract/read [file]'s content and store it. Scanned PDFs (no text layer)
+  /// Extract/read a picked [file] and store it. Scanned PDFs (no text layer)
   /// are still imported so they can be read in the original page view.
   Future<LibraryEntry> importPicked(XFile file) async {
-    final path = file.path;
-    if (path.isEmpty) {
+    if (file.path.isEmpty) {
       throw const ImportException('Could not read the selected file.');
     }
-    final name = file.name;
+    return importFromPath(file.path, file.name);
+  }
+
+  /// Import a document from a filesystem [path] with display [name] (used by the
+  /// picker and by open-with / share intents).
+  Future<LibraryEntry> importFromPath(String path, String name) async {
+    final file = File(path);
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     final title = _stripExtension(name);
 

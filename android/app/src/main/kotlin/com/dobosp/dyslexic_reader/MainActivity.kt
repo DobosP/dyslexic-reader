@@ -1,11 +1,14 @@
 package com.dobosp.dyslexic_reader
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -18,20 +21,24 @@ import java.util.concurrent.Executors
 
 /**
  * Hosts the native PDF bridge: text extraction (PdfBox-Android) and page
- * rendering (Android PdfRenderer). The Dart side is [PdfTextChannel].
- * Word-boundary TTS will add a second channel in a later phase. See
- * docs/ARCHITECTURE.md §5.
+ * rendering (Android PdfRenderer), plus open-with / share intent handling.
+ * The Dart side is [PdfTextChannel] and [IncomingFileChannel]. Word-boundary
+ * TTS will add a channel in a later phase. See docs/ARCHITECTURE.md §5.
  */
 class MainActivity : FlutterActivity() {
-    private val channelName = "dyslexic_reader/pdf_text"
+    private val pdfChannelName = "dyslexic_reader/pdf_text"
+    private val incomingChannelName = "dyslexic_reader/incoming"
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** A file the app was opened with (VIEW/SEND), consumed once by Flutter. */
+    private var pendingFile: Map<String, String>? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         PDFBoxResourceLoader.init(applicationContext)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, pdfChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "extractText" -> {
@@ -56,6 +63,67 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, incomingChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "consumeInitialFile" -> {
+                        val file = pendingFile
+                        pendingFile = null
+                        result.success(file)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // The intent that launched the activity (cold-start open-with/share).
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val uri: Uri? = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            else -> null
+        }
+        if (uri != null) {
+            copyToCache(uri)?.let { pendingFile = it }
+        }
+    }
+
+    private fun copyToCache(uri: Uri): Map<String, String>? {
+        return try {
+            val name = queryName(uri) ?: "shared_${System.currentTimeMillis()}"
+            val outFile = File(cacheDir, "incoming_${System.currentTimeMillis()}_$name")
+            val input = contentResolver.openInputStream(uri) ?: return null
+            input.use { source ->
+                outFile.outputStream().use { sink -> source.copyTo(sink) }
+            }
+            mapOf("path" to outFile.absolutePath, "name" to name)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun queryName(uri: Uri): String? {
+        if (uri.scheme == "file") return uri.path?.let { File(it).name }
+        var name: String? = null
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) name = cursor.getString(index)
+                }
+            }
+        return name
     }
 
     private fun extractText(path: String, password: String?, result: MethodChannel.Result) {
