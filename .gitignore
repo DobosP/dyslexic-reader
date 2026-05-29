@@ -48,6 +48,9 @@ app.*.map.json
 android/key.properties
 **/*.jks
 **/*.keystore
+# ...except the non-secret DEBUG keystore, committed for stable debug signing
+# so debug APKs can be installed over each other as updates.
+!android/app/debug.keystore
 
 # Kotlin build session artifacts
 .kotlin/

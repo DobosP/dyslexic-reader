@@ -258,7 +258,7 @@ class _PageBar extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 4, right: 8),
                   child: Text(
-                    '${index + 1} / $count',
+                    '${index + 1} / $count${controller.complete ? '' : '…'}',
                     style: TextStyle(color: palette.onBackground),
                   ),
                 ),

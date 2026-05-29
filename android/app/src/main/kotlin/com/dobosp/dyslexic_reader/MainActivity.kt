@@ -89,14 +89,27 @@ class MainActivity : FlutterActivity() {
     @Suppress("DEPRECATION")
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
-        val uri: Uri? = when (intent.action) {
-            Intent.ACTION_VIEW -> intent.data
-            Intent.ACTION_SEND -> intent.getParcelableExtra(Intent.EXTRA_STREAM)
-            else -> null
+        when (intent.action) {
+            Intent.ACTION_VIEW ->
+                intent.data?.let { uri -> copyToCache(uri)?.let { pendingFile = it } }
+            Intent.ACTION_SEND -> {
+                val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                if (uri != null) {
+                    copyToCache(uri)?.let { pendingFile = it }
+                } else {
+                    val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+                    if (!text.isNullOrBlank()) pendingFile = writeSharedText(text)
+                }
+            }
         }
-        if (uri != null) {
-            copyToCache(uri)?.let { pendingFile = it }
-        }
+    }
+
+    private fun writeSharedText(text: String): Map<String, String>? = try {
+        val out = File(cacheDir, "shared_${System.currentTimeMillis()}.txt")
+        out.writeText(text)
+        mapOf("path" to out.absolutePath, "name" to "Shared text.txt")
+    } catch (e: Exception) {
+        null
     }
 
     private fun copyToCache(uri: Uri): Map<String, String>? {

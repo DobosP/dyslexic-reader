@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../domain/models/reading_document.dart';
@@ -9,6 +11,9 @@ class PageReaderController extends ChangeNotifier {
   int pageIndex = 0;
   int pageCount = 1;
   int currentOffset = 0;
+
+  /// False while pages are still being computed in the background.
+  bool complete = false;
 
   void Function(int offset)? _jumpToOffset;
   void Function(int page)? _goToPage;
@@ -26,17 +31,19 @@ class PageReaderController extends ChangeNotifier {
     _goToPage = goToPage;
   }
 
-  void _update({int? pageIndex, int? pageCount, int? currentOffset}) {
+  void _update({int? pageIndex, int? pageCount, int? currentOffset, bool? complete}) {
     if (pageIndex != null) this.pageIndex = pageIndex;
     if (pageCount != null) this.pageCount = pageCount;
     if (currentOffset != null) this.currentOffset = currentOffset;
+    if (complete != null) this.complete = complete;
     notifyListeners();
   }
 }
 
-/// Splits a [ReadingDocument] into screen-fit pages and shows them in a swipeable
-/// [PageView]. Re-paginates when the style or available size changes, preserving
-/// the reading position (a character offset).
+/// Splits a [ReadingDocument] into screen-fit pages **incrementally**: the first
+/// page(s) are computed immediately, the rest fill in the background and
+/// just-in-time as the reader swipes. Re-paginates when the style or available
+/// size changes, preserving the reading position (a character offset).
 class PaginatedReader extends StatefulWidget {
   const PaginatedReader({
     super.key,
@@ -66,9 +73,13 @@ class PaginatedReader extends StatefulWidget {
 class _PaginatedReaderState extends State<PaginatedReader> {
   static const double _hPad = 20;
   static const double _vPad = 20;
+  static const int _lookahead = 2; // keep this many pages ready ahead of the user
 
   final PageController _pageController = PageController();
-  List<ReaderPage> _pages = const [];
+  LazyPaginator? _paginator;
+  List<ReaderPage> _pages = [];
+  bool _complete = false;
+  int _generation = 0;
   String _signature = '';
   int _targetOffset = 0;
 
@@ -81,20 +92,26 @@ class _PaginatedReaderState extends State<PaginatedReader> {
 
   @override
   void dispose() {
+    _generation++; // stop any in-flight background fill
     _pageController.dispose();
     super.dispose();
   }
 
+  int _currentPage() => _pageController.hasClients && _pageController.page != null
+      ? _pageController.page!.round()
+      : 0;
+
   void _jumpToOffset(int offset) {
     _targetOffset = offset;
+    _ensureComputedForOffset(offset);
     _animateToPage(Paginator.pageForOffset(_pages, offset));
   }
 
   void _animateToPage(int page) {
+    _ensureComputedForPage(page);
     if (!_pageController.hasClients || _pages.isEmpty) return;
-    final clamped = page.clamp(0, _pages.length - 1);
     _pageController.animateToPage(
-      clamped,
+      page.clamp(0, _pages.length - 1),
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
     );
@@ -109,6 +126,48 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     final height = painter.height;
     painter.dispose();
     return height;
+  }
+
+  /// Compute pages until the page containing [offset] (plus a small buffer) exists.
+  void _ensureComputedForOffset(int offset) {
+    final p = _paginator;
+    if (p == null) return;
+    while (p.hasMore && !(_pages.length >= 2 && _pages.last.start > offset)) {
+      final page = p.next();
+      if (page == null) break;
+      _pages.add(page);
+    }
+    if (!p.hasMore) _complete = true;
+  }
+
+  void _ensureComputedForPage(int pageIndex) {
+    final p = _paginator;
+    if (p == null) return;
+    while (p.hasMore && _pages.length <= pageIndex + _lookahead) {
+      final page = p.next();
+      if (page == null) break;
+      _pages.add(page);
+    }
+    if (!p.hasMore) _complete = true;
+  }
+
+  void _startBackgroundFill(int gen) {
+    Future(() async {
+      final p = _paginator;
+      if (p == null) return;
+      while (mounted && gen == _generation && p.hasMore) {
+        for (var k = 0; k < 12 && p.hasMore; k++) {
+          final page = p.next();
+          if (page == null) break;
+          _pages.add(page);
+        }
+        if (!p.hasMore) _complete = true;
+        if (!mounted || gen != _generation) return;
+        setState(() {});
+        _notify(_currentPage());
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    });
   }
 
   @override
@@ -137,17 +196,23 @@ class _PaginatedReaderState extends State<PaginatedReader> {
 
         if (signature != _signature) {
           _signature = signature;
-          _pages = Paginator.paginate(
+          _generation++;
+          final gen = _generation;
+          _paginator = LazyPaginator(
             doc: widget.document,
             maxHeight: pageHeight,
             paragraphSpacing: widget.paragraphSpacing,
             measure: (text) => _measure(text, colWidth, scaler),
           );
+          _pages = [];
+          _complete = false;
+          _ensureComputedForOffset(_targetOffset); // first page(s) only — fast
           final targetPage = Paginator.pageForOffset(_pages, _targetOffset);
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
+            if (!mounted || gen != _generation) return;
             if (_pageController.hasClients) _pageController.jumpToPage(targetPage);
             _notify(targetPage);
+            _startBackgroundFill(gen);
           });
         }
 
@@ -156,6 +221,10 @@ class _PaginatedReaderState extends State<PaginatedReader> {
           itemCount: _pages.length,
           onPageChanged: (i) {
             _targetOffset = _pages[i].start;
+            if (!_complete) {
+              _ensureComputedForPage(i);
+              setState(() {});
+            }
             _notify(i);
             widget.onOffsetChanged?.call(_pages[i].start);
           },
@@ -181,6 +250,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       pageIndex: clamped,
       pageCount: _pages.length,
       currentOffset: _pages[clamped].start,
+      complete: _complete,
     );
   }
 }

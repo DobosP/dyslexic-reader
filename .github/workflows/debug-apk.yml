@@ -29,7 +29,9 @@ jobs:
 
       - run: flutter --version
       - run: flutter pub get
-      - run: flutter build apk --debug
+      # Auto-incrementing versionCode so each build installs as an update over
+      # the previous one (paired with the committed stable debug keystore).
+      - run: flutter build apk --debug --build-number=${{ github.run_number }}
 
       # Always available as a per-run artifact (zipped).
       - name: Upload APK artifact

@@ -53,4 +53,15 @@ void main() {
     expect(pages, hasLength(1));
     expect(pages.single.paragraphs, isEmpty);
   });
+
+  test('LazyPaginator yields pages incrementally and reports completion', () {
+    final doc = Tokenizer.parse('aaa bbb ccc ddd eee fff');
+    final lp = LazyPaginator(doc: doc, maxHeight: 11, paragraphSpacing: 0, measure: measure);
+    expect(lp.hasMore, true);
+    expect(lp.next()!.paragraphs.single.text, 'aaa bbb ccc');
+    expect(lp.hasMore, true);
+    expect(lp.next()!.paragraphs.single.text, 'ddd eee fff');
+    expect(lp.hasMore, false);
+    expect(lp.next(), isNull);
+  });
 }

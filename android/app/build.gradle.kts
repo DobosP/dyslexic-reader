@@ -37,6 +37,15 @@ android {
     }
 
     signingConfigs {
+        // Stable, committed DEBUG key (standard Android debug credentials — not
+        // secret) so debug APKs from every build share a signature and can be
+        // installed over each other as updates, no uninstall needed.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (keystorePropertiesFile.exists()) {
             create("release") {
                 keyAlias = keystoreProperties["keyAlias"] as String

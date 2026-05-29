@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+# ...except the non-secret DEBUG keystore, committed for stable debug signing
+# so debug APKs can be installed over each other as updates.
+!app/debug.keystore
