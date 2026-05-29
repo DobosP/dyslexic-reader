@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../domain/models/reading_document.dart';
 import '../../../domain/reflow/paginator.dart';
 import 'paragraph_span.dart';
 
-/// Lets the screen observe and drive the paginated reader (page N/M, jumps).
+/// Lets the screen observe and drive the reader (page N/M, jumps).
 class PageReaderController extends ChangeNotifier {
   int pageIndex = 0;
   int pageCount = 1;
@@ -32,18 +33,30 @@ class PageReaderController extends ChangeNotifier {
   }
 
   void _update({int? pageIndex, int? pageCount, int? currentOffset, bool? complete}) {
-    if (pageIndex != null) this.pageIndex = pageIndex;
-    if (pageCount != null) this.pageCount = pageCount;
+    var changed = false;
+    if (pageIndex != null && pageIndex != this.pageIndex) {
+      this.pageIndex = pageIndex;
+      changed = true;
+    }
+    if (pageCount != null && pageCount != this.pageCount) {
+      this.pageCount = pageCount;
+      changed = true;
+    }
     if (currentOffset != null) this.currentOffset = currentOffset;
-    if (complete != null) this.complete = complete;
-    notifyListeners();
+    if (complete != null && complete != this.complete) {
+      this.complete = complete;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 }
 
-/// Splits a [ReadingDocument] into screen-fit pages **incrementally**: the first
-/// page(s) are computed immediately, the rest fill in the background and
-/// just-in-time as the reader swipes. Re-paginates when the style or available
-/// size changes, preserving the reading position (a character offset).
+/// A vertically-scrolling, **virtualized** reader. Pages are computed
+/// incrementally in the background (so the total count fills in without
+/// blocking the open), but only the pages near the viewport are rendered — the
+/// list recycles the rest. Page boundaries are cached, so jumps (slider,
+/// bookmarks, outline) scroll to an index instantly. Re-paginates on style/size
+/// change, preserving the reading position (a character offset).
 class PaginatedReader extends StatefulWidget {
   const PaginatedReader({
     super.key,
@@ -72,34 +85,55 @@ class PaginatedReader extends StatefulWidget {
 
 class _PaginatedReaderState extends State<PaginatedReader> {
   static const double _hPad = 20;
-  static const double _vPad = 20;
-  static const int _lookahead = 2; // keep this many pages ready ahead of the user
+  static const double _vPad = 16;
+  static const int _lookahead = 4; // keep this many pages computed ahead
 
-  final PageController _pageController = PageController();
+  final ItemScrollController _itemScroll = ItemScrollController();
+  final ItemPositionsListener _itemPositions = ItemPositionsListener.create();
+
   LazyPaginator? _paginator;
   List<ReaderPage> _pages = [];
   bool _complete = false;
   int _generation = 0;
   String _signature = '';
   int _targetOffset = 0;
+  int _initialIndex = 0;
+  int _topIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _targetOffset = widget.initialOffset;
     widget.controller?._bind(jumpToOffset: _jumpToOffset, goToPage: _animateToPage);
+    _itemPositions.itemPositions.addListener(_onPositions);
   }
 
   @override
   void dispose() {
     _generation++; // stop any in-flight background fill
-    _pageController.dispose();
+    _itemPositions.itemPositions.removeListener(_onPositions);
     super.dispose();
   }
 
-  int _currentPage() => _pageController.hasClients && _pageController.page != null
-      ? _pageController.page!.round()
-      : 0;
+  void _onPositions() {
+    final positions = _itemPositions.itemPositions.value;
+    if (positions.isEmpty || _pages.isEmpty) return;
+    final visible = positions.where((p) => p.itemTrailingEdge > 0);
+    if (visible.isEmpty) return;
+    final top = visible.reduce((a, b) => a.index < b.index ? a : b).index;
+    final maxVisible = positions.map((p) => p.index).reduce((a, b) => a > b ? a : b);
+
+    _topIndex = top.clamp(0, _pages.length - 1);
+    _targetOffset = _pages[_topIndex].start;
+    _notify(_topIndex);
+    widget.onOffsetChanged?.call(_targetOffset);
+
+    // Safety net if the user scrolls faster than the background fill.
+    if (!_complete && maxVisible >= _pages.length - _lookahead) {
+      _ensureComputedForPage(maxVisible + _lookahead);
+      setState(() {});
+    }
+  }
 
   void _jumpToOffset(int offset) {
     _targetOffset = offset;
@@ -109,12 +143,16 @@ class _PaginatedReaderState extends State<PaginatedReader> {
 
   void _animateToPage(int page) {
     _ensureComputedForPage(page);
-    if (!_pageController.hasClients || _pages.isEmpty) return;
-    _pageController.animateToPage(
-      page.clamp(0, _pages.length - 1),
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-    );
+    final target = page.clamp(0, _pages.length - 1);
+    setState(() {}); // make sure itemCount reflects any newly computed pages
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_itemScroll.isAttached) return;
+      _itemScroll.scrollTo(
+        index: target,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   double _measure(String text, double maxWidth, TextScaler scaler) {
@@ -128,7 +166,6 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     return height;
   }
 
-  /// Compute pages until the page containing [offset] (plus a small buffer) exists.
   void _ensureComputedForOffset(int offset) {
     final p = _paginator;
     if (p == null) return;
@@ -164,7 +201,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
         if (!p.hasMore) _complete = true;
         if (!mounted || gen != _generation) return;
         setState(() {});
-        _notify(_currentPage());
+        _notify(_topIndex);
         await Future<void>.delayed(const Duration(milliseconds: 1));
       }
     });
@@ -207,27 +244,30 @@ class _PaginatedReaderState extends State<PaginatedReader> {
           _pages = [];
           _complete = false;
           _ensureComputedForOffset(_targetOffset); // first page(s) only — fast
-          final targetPage = Paginator.pageForOffset(_pages, _targetOffset);
+          _initialIndex = Paginator.pageForOffset(_pages, _targetOffset);
+          _topIndex = _initialIndex;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted || gen != _generation) return;
-            if (_pageController.hasClients) _pageController.jumpToPage(targetPage);
-            _notify(targetPage);
+            if (_itemScroll.isAttached) _itemScroll.jumpTo(index: _initialIndex);
+            _notify(_initialIndex);
             _startBackgroundFill(gen);
           });
         }
 
-        return PageView.builder(
-          controller: _pageController,
+        if (_pages.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No readable text in this document.'),
+            ),
+          );
+        }
+
+        return ScrollablePositionedList.builder(
           itemCount: _pages.length,
-          onPageChanged: (i) {
-            _targetOffset = _pages[i].start;
-            if (!_complete) {
-              _ensureComputedForPage(i);
-              setState(() {});
-            }
-            _notify(i);
-            widget.onOffsetChanged?.call(_pages[i].start);
-          },
+          itemScrollController: _itemScroll,
+          itemPositionsListener: _itemPositions,
+          initialScrollIndex: _initialIndex,
           itemBuilder: (context, i) => _PageBody(
             page: _pages[i],
             style: widget.style,
@@ -287,6 +327,7 @@ class _PageBody extends StatelessWidget {
           width: columnWidth,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               for (var i = 0; i < page.paragraphs.length; i++) ...[
                 if (i > 0) SizedBox(height: paragraphSpacing),
