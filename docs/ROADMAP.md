@@ -27,7 +27,7 @@ strongest-evidence features first.
 
 ## Phase 2 — Active reading (pages, structure, highlighting) 🚧
 Redefined with the product owner. Building in this order:
-- [ ] **Pages & progress**: paginate into screen-fit pages (swipe/turn); remember
+- [x] **Pages & progress**: paginate into screen-fit pages (swipe/turn); remember
       reading position (char-offset based, survives font changes); bookmarks
 - [ ] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
       overview; tap a chapter to jump to it
