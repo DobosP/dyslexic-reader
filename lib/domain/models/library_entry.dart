@@ -11,6 +11,29 @@ enum DocSource {
   final String label;
 }
 
+/// A saved spot in a document. [offset] is a character offset into the full
+/// text, so it survives font/spacing changes (unlike a page index).
+class Bookmark {
+  const Bookmark({required this.offset, required this.label, required this.createdAt});
+
+  final int offset;
+  final String label;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'offset': offset,
+        'label': label,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory Bookmark.fromJson(Map<String, dynamic> j) => Bookmark(
+        offset: (j['offset'] as num?)?.toInt() ?? 0,
+        label: j['label'] as String? ?? '',
+        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      );
+}
+
 /// Metadata for a document saved in the on-device library. Extracted/plain text
 /// is cached at [cacheTextPath]; for PDFs the original file is copied to
 /// [pdfPath] so the "original pages" view can render it.
@@ -26,7 +49,8 @@ class LibraryEntry {
     this.originalPath,
     this.hasTextLayer = true,
     this.pdfPath,
-    this.scrollOffset = 0,
+    this.readingCharOffset = 0,
+    this.bookmarks = const [],
   });
 
   final String id;
@@ -44,10 +68,17 @@ class LibraryEntry {
   /// Path to the PDF copied into app storage (for the original page view).
   final String? pdfPath;
 
-  /// Saved reflow scroll position, restored when the document is reopened.
-  final double scrollOffset;
+  /// Last reading position as a character offset into the full text.
+  final int readingCharOffset;
 
-  LibraryEntry copyWith({double? scrollOffset}) => LibraryEntry(
+  /// Saved bookmarks for this document.
+  final List<Bookmark> bookmarks;
+
+  LibraryEntry copyWith({
+    int? readingCharOffset,
+    List<Bookmark>? bookmarks,
+  }) =>
+      LibraryEntry(
         id: id,
         title: title,
         source: source,
@@ -58,7 +89,8 @@ class LibraryEntry {
         originalPath: originalPath,
         hasTextLayer: hasTextLayer,
         pdfPath: pdfPath,
-        scrollOffset: scrollOffset ?? this.scrollOffset,
+        readingCharOffset: readingCharOffset ?? this.readingCharOffset,
+        bookmarks: bookmarks ?? this.bookmarks,
       );
 
   Map<String, dynamic> toJson() => {
@@ -72,7 +104,8 @@ class LibraryEntry {
         'originalPath': originalPath,
         'hasTextLayer': hasTextLayer,
         'pdfPath': pdfPath,
-        'scrollOffset': scrollOffset,
+        'readingCharOffset': readingCharOffset,
+        'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
       };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> j) => LibraryEntry(
@@ -90,7 +123,11 @@ class LibraryEntry {
         originalPath: j['originalPath'] as String?,
         hasTextLayer: j['hasTextLayer'] as bool? ?? true,
         pdfPath: j['pdfPath'] as String?,
-        scrollOffset: (j['scrollOffset'] as num?)?.toDouble() ?? 0,
+        readingCharOffset: (j['readingCharOffset'] as num?)?.toInt() ?? 0,
+        bookmarks: ((j['bookmarks'] as List?) ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(Bookmark.fromJson)
+            .toList(),
       );
 
   static String encodeList(List<LibraryEntry> entries) =>

@@ -8,15 +8,14 @@ import '../library/library_controller.dart';
 import '../settings/reading_prefs_controller.dart';
 import '../settings/settings_screen.dart';
 import 'original_pdf_screen.dart';
-import 'widgets/reflow_text.dart';
+import 'widgets/paginated_reader.dart';
 
 class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({super.key, required this.document, this.entry});
 
   final ReadingDocument document;
 
-  /// The library entry this document came from, if any. Enables reading-position
-  /// persistence and the "original pages" view.
+  /// The library entry this came from, if any. Enables progress + bookmarks.
   final LibraryEntry? entry;
 
   @override
@@ -24,19 +23,17 @@ class ReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _ReaderScreenState extends ConsumerState<ReaderScreen> {
-  late final ScrollController _scroll =
-      ScrollController(initialScrollOffset: widget.entry?.scrollOffset ?? 0);
+  final PageReaderController _pageCtrl = PageReaderController();
 
   @override
   void dispose() {
     final entry = widget.entry;
-    if (entry != null && _scroll.hasClients) {
-      // Fire-and-forget persistence of the reading position.
+    if (entry != null) {
       ref
           .read(libraryControllerProvider.notifier)
-          .saveProgress(entry.id, _scroll.offset);
+          .saveProgress(entry.id, _pageCtrl.currentOffset);
     }
-    _scroll.dispose();
+    _pageCtrl.dispose();
     super.dispose();
   }
 
@@ -47,6 +44,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final entry = widget.entry;
     final canViewOriginal = entry?.pdfPath != null && entry!.pageCount > 0;
 
+    final style = TextStyle(
+      fontFamily: prefs.fontFamily.family,
+      fontSize: prefs.fontSizeSp,
+      height: prefs.lineHeight,
+      letterSpacing: prefs.letterSpacingPx,
+      wordSpacing: prefs.wordSpacingPx,
+      color: palette.onBackground,
+    );
+
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(
@@ -54,6 +60,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         foregroundColor: palette.onBackground,
         title: Text(widget.document.title, overflow: TextOverflow.ellipsis),
         actions: [
+          if (entry != null)
+            IconButton(
+              tooltip: 'Bookmark this page',
+              icon: const Icon(Icons.bookmark_add_outlined),
+              onPressed: () => _addBookmark(entry),
+            ),
+          if (entry != null)
+            IconButton(
+              tooltip: 'Bookmarks',
+              icon: const Icon(Icons.bookmarks_outlined),
+              onPressed: () => _showBookmarks(entry.id),
+            ),
           if (canViewOriginal)
             IconButton(
               tooltip: 'Original pages',
@@ -83,12 +101,85 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         ],
       ),
       body: SafeArea(
-        child: ReflowText(
-          document: widget.document,
-          prefs: prefs,
-          textColor: palette.onBackground,
-          controller: _scroll,
+        child: Column(
+          children: [
+            Expanded(
+              child: PaginatedReader(
+                document: widget.document,
+                style: style,
+                maxColumnWidth: prefs.maxLineWidthPx,
+                paragraphSpacing: prefs.paragraphSpacingPx,
+                bionic: prefs.bionicEnabled,
+                initialOffset: entry?.readingCharOffset ?? 0,
+                controller: _pageCtrl,
+              ),
+            ),
+            _PageBar(controller: _pageCtrl, palette: palette),
+          ],
         ),
+      ),
+    );
+  }
+
+  String _snippet(int offset) {
+    final t = widget.document.text;
+    if (offset < 0 || offset >= t.length) return 'Bookmark';
+    final end = (offset + 48).clamp(0, t.length);
+    var s = t.substring(offset, end).replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (end < t.length) s += '…';
+    return s.isEmpty ? 'Bookmark' : s;
+  }
+
+  void _addBookmark(LibraryEntry entry) {
+    final offset = _pageCtrl.currentOffset;
+    ref.read(libraryControllerProvider.notifier).addBookmark(
+          entry.id,
+          Bookmark(offset: offset, label: _snippet(offset), createdAt: DateTime.now()),
+        );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Bookmark saved'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  void _showBookmarks(String id) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => Consumer(
+        builder: (context, ref, _) {
+          final list = ref.watch(libraryControllerProvider).valueOrNull ?? const [];
+          LibraryEntry? entry;
+          for (final e in list) {
+            if (e.id == id) entry = e;
+          }
+          final bookmarks = entry?.bookmarks ?? const <Bookmark>[];
+          if (bookmarks.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No bookmarks yet. Tap the bookmark icon to save your place.'),
+            );
+          }
+          return ListView(
+            shrinkWrap: true,
+            children: [
+              for (final b in bookmarks)
+                ListTile(
+                  leading: const Icon(Icons.bookmark_outline),
+                  title: Text(b.label, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => ref
+                        .read(libraryControllerProvider.notifier)
+                        .removeBookmark(id, b),
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _pageCtrl.jumpToOffset(b.offset);
+                  },
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -99,8 +190,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       showDragHandle: true,
       builder: (context) => Consumer(
         builder: (context, ref, _) {
-          final size =
-              ref.watch(readingPrefsProvider.select((p) => p.fontSizeSp));
+          final size = ref.watch(readingPrefsProvider.select((p) => p.fontSizeSp));
           return Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: Column(
@@ -122,6 +212,61 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+class _PageBar extends StatelessWidget {
+  const _PageBar({required this.controller, required this.palette});
+
+  final PageReaderController controller;
+  final ReadingPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final count = controller.pageCount;
+        final index = controller.pageIndex.clamp(0, count - 1);
+        return Material(
+          color: palette.background,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Previous page',
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: index > 0 ? controller.prev : null,
+                ),
+                Expanded(
+                  child: count > 1
+                      ? Slider(
+                          value: index.toDouble(),
+                          min: 0,
+                          max: (count - 1).toDouble(),
+                          onChanged: (v) => controller.goToPage(v.round()),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                IconButton(
+                  tooltip: 'Next page',
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: index < count - 1 ? controller.next : null,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, right: 8),
+                  child: Text(
+                    '${index + 1} / $count',
+                    style: TextStyle(color: palette.onBackground),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

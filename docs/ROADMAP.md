@@ -25,11 +25,17 @@ strongest-evidence features first.
 - [ ] Word-position extraction (for highlight/ruler) — folded into the TTS phase
 - [ ] Migrate the flat JSON library index to drift if it outgrows a single file
 
-## Phase 2 — Read-aloud + highlighting (highest value)
-- [ ] Native bridge: `TtsEngine` (Android `TextToSpeech` + `onRangeStart`)
-- [ ] Word + sentence highlight synced to audio; play/pause, speed, voice picker
-- [ ] Sentence-level fallback when an engine emits no word boundaries
-- [ ] Chunk long text at sentence boundaries (<4000 chars/utterance)
+## Phase 2 — Active reading (pages, structure, highlighting) 🚧
+Redefined with the product owner. Building in this order:
+- [ ] **Pages & progress**: paginate into screen-fit pages (swipe/turn); remember
+      reading position (char-offset based, survives font changes); bookmarks
+- [ ] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
+      overview; tap a chapter to jump to it
+- [ ] **Manual highlighting**: finger-select text, colored highlights saved per
+      book, revisitable list  *(queued)*
+- [ ] **AI summary**: whole-book / per-chapter summaries  *(parked — revisit cloud powering + API key)*
+- [ ] **Read-aloud + word highlighting** (original plan): native `TextToSpeech`
+      + `onRangeStart`, sentence-level fallback  *(parked)*
 
 ## Phase 3 — Reading ruler / line focus
 - [ ] Ruler styles: bar / lightbox / shade / underline (CHI-2023 set)

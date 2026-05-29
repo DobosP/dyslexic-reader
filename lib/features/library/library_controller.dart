@@ -150,14 +150,44 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return Tokenizer.parse(text, title: e.title);
   }
 
-  /// Persist the reflow scroll position for [id] (no-op for non-library docs).
-  Future<void> saveProgress(String id, double offset) async {
+  /// Persist the reading position (char offset) for [id]; no-op otherwise.
+  Future<void> saveProgress(String id, int charOffset) async {
     final list = state.valueOrNull;
     if (list == null) return;
     final idx = list.indexWhere((e) => e.id == id);
     if (idx < 0) return;
     final next = [...list];
-    next[idx] = list[idx].copyWith(scrollOffset: offset);
+    next[idx] = list[idx].copyWith(readingCharOffset: charOffset);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
+  Future<void> addBookmark(String id, Bookmark bookmark) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final entry = list[idx];
+    final bookmarks = [...entry.bookmarks, bookmark]
+      ..sort((a, b) => a.offset.compareTo(b.offset));
+    final next = [...list];
+    next[idx] = entry.copyWith(bookmarks: bookmarks);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
+  Future<void> removeBookmark(String id, Bookmark bookmark) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final entry = list[idx];
+    final bookmarks = entry.bookmarks
+        .where((b) => !(b.offset == bookmark.offset &&
+            b.createdAt == bookmark.createdAt))
+        .toList();
+    final next = [...list];
+    next[idx] = entry.copyWith(bookmarks: bookmarks);
     await _writeIndex(next);
     state = AsyncData(next);
   }

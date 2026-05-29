@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../domain/models/reading_document.dart';
 import '../../../domain/models/reading_prefs.dart';
-import '../../../domain/reflow/bionic.dart';
+import 'paragraph_span.dart';
 
 /// Renders a [ReadingDocument] as a reflowed, left-aligned column of paragraphs
 /// styled by [prefs]. Virtualized (one paragraph per list item) so large
@@ -43,27 +43,15 @@ class ReflowText extends StatelessWidget {
           separatorBuilder: (_, _) =>
               SizedBox(height: prefs.paragraphSpacingPx),
           itemBuilder: (context, i) => Text.rich(
-            _paragraphSpan(document.paragraphs[i], base),
+            buildParagraphSpan(
+              document.paragraphs[i].words,
+              base,
+              bionic: prefs.bionicEnabled,
+            ),
             textAlign: TextAlign.start,
           ),
         ),
       ),
     );
-  }
-
-  InlineSpan _paragraphSpan(Paragraph p, TextStyle base) {
-    if (!prefs.bionicEnabled) {
-      return TextSpan(text: p.words.map((w) => w.text).join(' '), style: base);
-    }
-    final bold = base.copyWith(fontWeight: FontWeight.w700);
-    final spans = <InlineSpan>[];
-    for (var i = 0; i < p.words.length; i++) {
-      final w = p.words[i].text;
-      final n = Bionic.boldPrefixLength(w);
-      if (n > 0) spans.add(TextSpan(text: w.substring(0, n), style: bold));
-      if (n < w.length) spans.add(TextSpan(text: w.substring(n)));
-      if (i != p.words.length - 1) spans.add(const TextSpan(text: ' '));
-    }
-    return TextSpan(style: base, children: spans);
   }
 }
