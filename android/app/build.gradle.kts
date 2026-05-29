@@ -68,3 +68,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // PDF text extraction (Apache-2.0). See docs/ARCHITECTURE.md §5.1.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+}

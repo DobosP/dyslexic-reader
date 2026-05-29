@@ -14,12 +14,16 @@ strongest-evidence features first.
 - [x] Library screen: read bundled sample / paste your own text
 - [x] CI: `flutter analyze` + `flutter test` + build signed APK (GitHub Actions)
 
-## Phase 1 — PDF import & reflow
-- [ ] `file_picker` + share-intent to open PDFs and `.txt`
-- [ ] Native bridge: `PdfTextExtractor` (PdfBox-Android) — text + word positions
-- [ ] Text-layer detection → reflow born-digital PDFs
-- [ ] Document library (drift): list, reopen, reading progress
-- [ ] "Original view" fallback (pdfrx) for layout-heavy pages
+## Phase 1 — PDF import & reflow 🚧
+- [x] `file_picker` import for PDFs and `.txt` (share-intent: later)
+- [x] Native bridge: `PdfTextExtractor` (PdfBox-Android) — full text + page count
+- [x] Text-layer detection → reflow born-digital PDFs (scanned PDFs show an
+      "OCR coming later" message instead of failing)
+- [x] On-device document library (JSON index + cached text): list, reopen, delete
+- [ ] Word-position extraction (for highlight/ruler) — folded into the TTS phase
+- [ ] Reading progress (remember last position) — deferred
+- [ ] "Original view" fallback (pdfrx) for layout-heavy / scanned pages — deferred
+- [ ] Migrate the flat JSON library index to drift if it outgrows a single file
 
 ## Phase 2 — Read-aloud + highlighting (highest value)
 - [ ] Native bridge: `TtsEngine` (Android `TextToSpeech` + `onRangeStart`)
