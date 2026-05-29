@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -89,24 +89,25 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   }
 
   /// Show the system picker for a PDF or .txt file. Returns null if cancelled.
-  Future<PlatformFile?> pickFile() async {
-    final picked = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'txt'],
+  Future<XFile?> pickFile() async {
+    const group = XTypeGroup(
+      label: 'Documents',
+      extensions: ['pdf', 'txt'],
+      mimeTypes: ['application/pdf', 'text/plain'],
     );
-    if (picked == null || picked.files.isEmpty) return null;
-    return picked.files.single;
+    return openFile(acceptedTypeGroups: [group]);
   }
 
   /// Extract/read [file]'s text and store it. Throws [ScannedPdfException] for
   /// image-only PDFs.
-  Future<LibraryEntry> importPicked(PlatformFile file) async {
+  Future<LibraryEntry> importPicked(XFile file) async {
     final path = file.path;
-    if (path == null) {
+    if (path.isEmpty) {
       throw const ImportException('Could not read the selected file.');
     }
-    final ext = (file.extension ?? '').toLowerCase();
-    final title = _stripExtension(file.name);
+    final name = file.name;
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    final title = _stripExtension(name);
 
     if (ext == 'pdf') {
       final res = await const PdfTextChannel().extractText(path);
@@ -119,7 +120,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
         pageCount: res.pageCount,
       );
     }
-    final text = await File(path).readAsString();
+    final text = await file.readAsString();
     return _add(
       title: title,
       text: text,

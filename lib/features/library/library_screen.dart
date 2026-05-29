@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -98,7 +98,7 @@ class LibraryScreen extends ConsumerWidget {
   Future<void> _import(BuildContext context, WidgetRef ref) async {
     final controller = ref.read(libraryControllerProvider.notifier);
 
-    PlatformFile? file;
+    XFile? file;
     try {
       file = await controller.pickFile();
     } catch (_) {

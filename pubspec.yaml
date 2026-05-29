@@ -14,8 +14,8 @@ dependencies:
   flutter_riverpod: ^2.5.1
   # Lightweight persistence for ReadingPrefs
   shared_preferences: ^2.2.3
-  file_picker: ^11.0.2
   path_provider: ^2.1.5
+  file_selector: ^1.1.0
 
 dev_dependencies:
   flutter_test:
