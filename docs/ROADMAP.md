@@ -33,6 +33,10 @@ Redefined with the product owner. Building in this order:
       instantly, the rest fill in the background and just-in-time on swipe
 - [x] **Updatable debug installs**: stable committed debug key + auto versionCode
       so debug APKs install over each other; open-with/share also accepts text
+- [x] **Scroll reading**: vertical virtualized scroll (windowed render, fast jumps)
+- [x] **Structured PDF text**: on-device extractor rebuilds headings & paragraphs
+      (PdfBox subclass), strips running headers/footers, de-hyphenates — see
+      docs/PDF_PARSING.md
 - [ ] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
       overview; tap a chapter to jump to it
 - [ ] **Manual highlighting**: finger-select text, colored highlights saved per
