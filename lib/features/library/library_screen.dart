@@ -5,13 +5,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models/library_entry.dart';
-import '../../domain/models/reading_document.dart';
 import '../../domain/reflow/tokenizer.dart';
+import '../reader/original_pdf_screen.dart';
 import '../reader/reader_screen.dart';
 import '../settings/settings_screen.dart';
 import 'library_controller.dart';
 import 'paste_text_screen.dart';
 import 'sample_text.dart';
+
+/// Opens a library entry: reflow view when it has a text layer, otherwise the
+/// original page view (scanned PDFs).
+Future<void> openLibraryEntry(
+  BuildContext context,
+  WidgetRef ref,
+  LibraryEntry entry,
+) async {
+  if (entry.hasTextLayer) {
+    final doc = await ref.read(libraryControllerProvider.notifier).open(entry);
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderScreen(document: doc, entry: entry),
+      ),
+    );
+  } else if (entry.pdfPath != null) {
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OriginalPdfScreen(
+          title: entry.title,
+          pdfPath: entry.pdfPath!,
+          pageCount: entry.pageCount,
+        ),
+      ),
+    );
+  }
+}
 
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
@@ -114,13 +143,10 @@ class LibraryScreen extends ConsumerWidget {
       builder: (_) => const Center(child: CircularProgressIndicator()),
     ));
 
-    ReadingDocument? doc;
+    LibraryEntry? entry;
     Object? failure;
     try {
-      final entry = await controller.importPicked(file);
-      doc = await controller.open(entry);
-    } on ScannedPdfException {
-      failure = const ScannedPdfException();
+      entry = await controller.importPicked(file);
     } catch (e) {
       failure = e;
     }
@@ -128,42 +154,21 @@ class LibraryScreen extends ConsumerWidget {
     if (!context.mounted) return;
     Navigator.of(context).pop(); // dismiss progress
 
-    if (failure is ScannedPdfException) {
-      _showScannedDialog(context);
-      return;
-    }
     if (failure != null) {
       _snack(context, 'Import failed: $failure');
       return;
     }
-    if (doc != null) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => ReaderScreen(document: doc!)),
-      );
+    if (entry != null) {
+      if (!entry.hasTextLayer) {
+        _snack(context,
+            'No text layer found — showing the original pages. OCR is coming later.');
+      }
+      await openLibraryEntry(context, ref, entry);
     }
   }
 
   void _snack(BuildContext context, String message) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-
-  void _showScannedDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('No text found'),
-        content: const Text(
-          'This looks like a scanned PDF with no selectable text. Reading scanned '
-          'PDFs needs OCR, which is coming in a later phase.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ActionCard extends StatelessWidget {
@@ -206,8 +211,10 @@ class _DocTile extends ConsumerWidget {
       DocSource.txt => Icons.description_outlined,
       _ => Icons.article_outlined,
     };
-    final subtitle = entry.source == DocSource.pdf
-        ? '${entry.source.label} · ${entry.pageCount} pages · ${entry.wordCount} words'
+    final detail = entry.source == DocSource.pdf
+        ? (entry.hasTextLayer
+            ? '${entry.source.label} · ${entry.pageCount} pages · ${entry.wordCount} words'
+            : '${entry.source.label} · ${entry.pageCount} pages · scanned (original view)')
         : '${entry.source.label} · ${entry.wordCount} words';
 
     return Card(
@@ -215,23 +222,15 @@ class _DocTile extends ConsumerWidget {
       child: ListTile(
         leading: Icon(icon),
         title: Text(entry.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(subtitle),
+        subtitle: Text(detail),
         trailing: IconButton(
           tooltip: 'Remove',
           icon: const Icon(Icons.delete_outline),
           onPressed: () =>
               ref.read(libraryControllerProvider.notifier).delete(entry),
         ),
-        onTap: () => _open(context, ref),
+        onTap: () => openLibraryEntry(context, ref, entry),
       ),
-    );
-  }
-
-  Future<void> _open(BuildContext context, WidgetRef ref) async {
-    final doc = await ref.read(libraryControllerProvider.notifier).open(entry);
-    if (!context.mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => ReaderScreen(document: doc)),
     );
   }
 }

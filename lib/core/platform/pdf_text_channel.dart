@@ -22,9 +22,9 @@ class PdfException implements Exception {
   String toString() => 'PdfException: $message';
 }
 
-/// Dart side of the native PDF text-extraction bridge (PdfBox-Android).
-/// See `android/app/src/main/kotlin/.../MainActivity.kt` and
-/// docs/ARCHITECTURE.md §5.1.
+/// Dart side of the native PDF bridge. Text extraction uses PdfBox-Android;
+/// page rendering uses Android's built-in `PdfRenderer`. See
+/// `android/app/src/main/kotlin/.../MainActivity.kt` and docs/ARCHITECTURE.md §5.1.
 class PdfTextChannel {
   const PdfTextChannel();
 
@@ -44,6 +44,23 @@ class PdfTextChannel {
       );
     } on PlatformException catch (e) {
       throw PdfException(e.message ?? 'PDF extraction failed.');
+    }
+  }
+
+  /// Render a single page to a PNG bitmap (for the original page view).
+  Future<Uint8List?> renderPage(
+    String path,
+    int pageIndex, {
+    int targetWidth = 1080,
+  }) async {
+    try {
+      return await _channel.invokeMethod<Uint8List>('renderPage', {
+        'path': path,
+        'pageIndex': pageIndex,
+        'targetWidth': targetWidth,
+      });
+    } on PlatformException catch (e) {
+      throw PdfException(e.message ?? 'PDF render failed.');
     }
   }
 }

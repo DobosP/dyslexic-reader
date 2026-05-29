@@ -16,13 +16,8 @@ class ImportException implements Exception {
   String toString() => message;
 }
 
-/// Thrown for image-only PDFs with no selectable text (need OCR — later phase).
-class ScannedPdfException implements Exception {
-  const ScannedPdfException();
-}
-
-/// Owns the on-device document library: a JSON index plus one cached text file
-/// per document, stored under the app documents directory.
+/// Owns the on-device document library: a JSON index plus a cached text file
+/// (and, for PDFs, a copied original) per document, under the app docs dir.
 class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   Directory? _root;
   File? _indexFile;
@@ -58,36 +53,6 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     await _indexFile?.writeAsString(LibraryEntry.encodeList(entries));
   }
 
-  Future<LibraryEntry> _add({
-    required String title,
-    required String text,
-    required DocSource source,
-    String? originalPath,
-    int pageCount = 0,
-  }) async {
-    final root = _root;
-    if (root == null) throw const ImportException('Storage is not available.');
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
-    final textFile = File('${root.path}/$id.txt');
-    await textFile.writeAsString(text);
-    final doc = Tokenizer.parse(text, title: title);
-    final entry = LibraryEntry(
-      id: id,
-      title: title,
-      source: source,
-      cacheTextPath: textFile.path,
-      wordCount: doc.wordCount,
-      pageCount: pageCount,
-      importedAt: DateTime.now(),
-      originalPath: originalPath,
-    );
-    final current = state.valueOrNull ?? await _readIndex();
-    final next = [entry, ...current];
-    await _writeIndex(next);
-    state = AsyncData(next);
-    return entry;
-  }
-
   /// Show the system picker for a PDF or .txt file. Returns null if cancelled.
   Future<XFile?> pickFile() async {
     const group = XTypeGroup(
@@ -98,8 +63,8 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return openFile(acceptedTypeGroups: [group]);
   }
 
-  /// Extract/read [file]'s text and store it. Throws [ScannedPdfException] for
-  /// image-only PDFs.
+  /// Extract/read [file]'s content and store it. Scanned PDFs (no text layer)
+  /// are still imported so they can be read in the original page view.
   Future<LibraryEntry> importPicked(XFile file) async {
     final path = file.path;
     if (path.isEmpty) {
@@ -111,22 +76,68 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
 
     if (ext == 'pdf') {
       final res = await const PdfTextChannel().extractText(path);
-      if (!res.hasText) throw const ScannedPdfException();
-      return _add(
+      final bytes = await file.readAsBytes();
+      return _store(
         title: title,
         text: res.fullText,
         source: DocSource.pdf,
+        hasTextLayer: res.hasText,
         originalPath: path,
+        pdfBytes: bytes,
         pageCount: res.pageCount,
       );
     }
     final text = await file.readAsString();
-    return _add(
+    return _store(
       title: title,
       text: text,
       source: DocSource.txt,
+      hasTextLayer: true,
       originalPath: path,
     );
+  }
+
+  Future<LibraryEntry> _store({
+    required String title,
+    required String text,
+    required DocSource source,
+    required bool hasTextLayer,
+    String? originalPath,
+    List<int>? pdfBytes,
+    int pageCount = 0,
+  }) async {
+    final root = _root;
+    if (root == null) throw const ImportException('Storage is not available.');
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+
+    final textFile = File('${root.path}/$id.txt');
+    await textFile.writeAsString(text);
+
+    String? pdfPath;
+    if (pdfBytes != null) {
+      final pdfFile = File('${root.path}/$id.pdf');
+      await pdfFile.writeAsBytes(pdfBytes);
+      pdfPath = pdfFile.path;
+    }
+
+    final doc = Tokenizer.parse(text, title: title);
+    final entry = LibraryEntry(
+      id: id,
+      title: title,
+      source: source,
+      cacheTextPath: textFile.path,
+      wordCount: doc.wordCount,
+      pageCount: pageCount,
+      importedAt: DateTime.now(),
+      originalPath: originalPath,
+      hasTextLayer: hasTextLayer,
+      pdfPath: pdfPath,
+    );
+    final current = state.valueOrNull ?? await _readIndex();
+    final next = [entry, ...current];
+    await _writeIndex(next);
+    state = AsyncData(next);
+    return entry;
   }
 
   Future<ReadingDocument> open(LibraryEntry e) async {
@@ -134,12 +145,27 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return Tokenizer.parse(text, title: e.title);
   }
 
+  /// Persist the reflow scroll position for [id] (no-op for non-library docs).
+  Future<void> saveProgress(String id, double offset) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final next = [...list];
+    next[idx] = list[idx].copyWith(scrollOffset: offset);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
   Future<void> delete(LibraryEntry e) async {
-    try {
-      final f = File(e.cacheTextPath);
-      if (await f.exists()) await f.delete();
-    } catch (_) {
-      // best effort
+    for (final p in [e.cacheTextPath, e.pdfPath]) {
+      if (p == null) continue;
+      try {
+        final f = File(p);
+        if (await f.exists()) await f.delete();
+      } catch (_) {
+        // best effort
+      }
     }
     final next = (state.valueOrNull ?? <LibraryEntry>[])
         .where((x) => x.id != e.id)

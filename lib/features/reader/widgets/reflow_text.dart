@@ -13,11 +13,13 @@ class ReflowText extends StatelessWidget {
     required this.document,
     required this.prefs,
     required this.textColor,
+    this.controller,
   });
 
   final ReadingDocument document;
   final ReadingPrefs prefs;
   final Color textColor;
+  final ScrollController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +37,7 @@ class ReflowText extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: prefs.maxLineWidthPx),
         child: ListView.separated(
+          controller: controller,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           itemCount: document.paragraphs.length,
           separatorBuilder: (_, _) =>

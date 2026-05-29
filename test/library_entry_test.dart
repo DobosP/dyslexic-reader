@@ -13,6 +13,9 @@ void main() {
         pageCount: 3,
         importedAt: DateTime.parse('2026-01-02T03:04:05.000'),
         originalPath: '/x/orig.pdf',
+        hasTextLayer: false,
+        pdfPath: '/x/1.pdf',
+        scrollOffset: 128.5,
       ),
     ];
     final back = LibraryEntry.decodeList(LibraryEntry.encodeList(entries));
@@ -22,6 +25,25 @@ void main() {
     expect(back.first.pageCount, 3);
     expect(back.first.importedAt, DateTime.parse('2026-01-02T03:04:05.000'));
     expect(back.first.originalPath, '/x/orig.pdf');
+    expect(back.first.hasTextLayer, false);
+    expect(back.first.pdfPath, '/x/1.pdf');
+    expect(back.first.scrollOffset, 128.5);
+  });
+
+  test('copyWith updates only the scroll offset', () {
+    final e = LibraryEntry(
+      id: '1',
+      title: 'Doc',
+      source: DocSource.txt,
+      cacheTextPath: '/x/1.txt',
+      wordCount: 5,
+      pageCount: 0,
+      importedAt: DateTime.parse('2026-01-01T00:00:00.000'),
+    );
+    final moved = e.copyWith(scrollOffset: 42);
+    expect(moved.scrollOffset, 42);
+    expect(moved.title, 'Doc');
+    expect(moved.id, e.id);
   });
 
   test('unknown source falls back to txt', () {
