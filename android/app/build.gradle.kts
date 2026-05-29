@@ -54,7 +54,14 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
-            isMinifyEnabled = false
+            // Code + resource shrinking for a smaller release APK. proguard-rules.pro
+            // keeps PdfBox-Android's reflection-based classes (see that file).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
