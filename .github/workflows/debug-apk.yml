@@ -1,0 +1,55 @@
+name: debug-apk
+
+# Builds an installable DEBUG APK and publishes it to a rolling "debug-latest"
+# GitHub Release so it can be downloaded and tested directly (no need to dig
+# into Actions artifacts). Runs on every push to main, and on demand.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+      # Always available as a per-run artifact (zipped).
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dyslexic-reader-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+
+      # Easy direct download: a rolling pre-release updated on each main build.
+      # URL: https://github.com/<owner>/<repo>/releases/download/debug-latest/app-debug.apk
+      - name: Publish to rolling debug release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-latest
+          name: "Debug build (latest)"
+          prerelease: true
+          files: build/app/outputs/flutter-apk/app-debug.apk
+          body: |
+            Latest **debug** APK, auto-built from `main`.
+
+            - Commit: `${{ github.sha }}`
+            - Install on Android with "unknown sources" enabled (sideload).
