@@ -1,10 +1,11 @@
+import 'package:dyslexic_reader/domain/models/reading_document.dart';
 import 'package:dyslexic_reader/domain/reflow/paginator.dart';
 import 'package:dyslexic_reader/domain/reflow/tokenizer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  // Fake measure: 1 height unit per character of the fragment text.
-  double measure(String t) => t.length.toDouble();
+  // Fake measure: 1 height unit per character (role ignored for the test).
+  double measure(String t, BlockRole role) => t.length.toDouble();
 
   test('packs words into pages that fit the height budget', () {
     final doc = Tokenizer.parse('aaa bbb ccc ddd eee fff');
@@ -46,12 +47,19 @@ void main() {
     expect(Paginator.pageForOffset(pages, doc.text.indexOf('ccc')), 1);
   });
 
-  test('empty document yields a single empty page', () {
-    final doc = Tokenizer.parse('   \n  ');
+  test('preserves block roles on page paragraphs', () {
+    final doc = Tokenizer.fromBlocks(const [
+      TextBlock(role: BlockRole.h1, text: 'Chapter One'),
+      TextBlock(role: BlockRole.body, text: 'Body text here.'),
+    ]);
     final pages =
-        Paginator.paginate(doc: doc, maxHeight: 100, paragraphSpacing: 8, measure: measure);
-    expect(pages, hasLength(1));
-    expect(pages.single.paragraphs, isEmpty);
+        Paginator.paginate(doc: doc, maxHeight: 1000, paragraphSpacing: 4, measure: measure);
+    final roles = [
+      for (final p in pages)
+        for (final frag in p.paragraphs) frag.role,
+    ];
+    expect(roles.first, BlockRole.h1);
+    expect(roles.last, BlockRole.body);
   });
 
   test('LazyPaginator yields pages incrementally and reports completion', () {

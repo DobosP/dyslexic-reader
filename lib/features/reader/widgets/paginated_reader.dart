@@ -155,9 +155,9 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     });
   }
 
-  double _measure(String text, double maxWidth, TextScaler scaler) {
+  double _measure(String text, TextStyle style, double maxWidth, TextScaler scaler) {
     final painter = TextPainter(
-      text: TextSpan(text: text, style: widget.style),
+      text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
       textScaler: scaler,
     )..layout(maxWidth: maxWidth <= 0 ? 1 : maxWidth);
@@ -239,7 +239,8 @@ class _PaginatedReaderState extends State<PaginatedReader> {
             doc: widget.document,
             maxHeight: pageHeight,
             paragraphSpacing: widget.paragraphSpacing,
-            measure: (text) => _measure(text, colWidth, scaler),
+            measure: (text, role) =>
+                _measure(text, styleForRole(role, widget.style), colWidth, scaler),
           );
           _pages = [];
           _complete = false;
@@ -295,6 +296,21 @@ class _PaginatedReaderState extends State<PaginatedReader> {
   }
 }
 
+/// Heading styles derived from the body [base] style.
+TextStyle styleForRole(BlockRole role, TextStyle base) {
+  final size = base.fontSize ?? 18.0;
+  switch (role) {
+    case BlockRole.h1:
+      return base.copyWith(fontSize: size * 1.8, fontWeight: FontWeight.w700, height: 1.2);
+    case BlockRole.h2:
+      return base.copyWith(fontSize: size * 1.45, fontWeight: FontWeight.w700, height: 1.25);
+    case BlockRole.h3:
+      return base.copyWith(fontSize: size * 1.2, fontWeight: FontWeight.w600, height: 1.3);
+    case BlockRole.body:
+      return base;
+  }
+}
+
 class _PageBody extends StatelessWidget {
   const _PageBody({
     required this.page,
@@ -330,9 +346,18 @@ class _PageBody extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               for (var i = 0; i < page.paragraphs.length; i++) ...[
-                if (i > 0) SizedBox(height: paragraphSpacing),
+                if (i > 0)
+                  SizedBox(
+                    height: page.paragraphs[i].role == BlockRole.body
+                        ? paragraphSpacing
+                        : paragraphSpacing * 1.8, // more breathing room before headings
+                  ),
                 Text.rich(
-                  buildParagraphSpan(page.paragraphs[i].words, style, bionic: bionic),
+                  buildParagraphSpan(
+                    page.paragraphs[i].words,
+                    styleForRole(page.paragraphs[i].role, style),
+                    bionic: bionic && page.paragraphs[i].role == BlockRole.body,
+                  ),
                   textAlign: TextAlign.start,
                 ),
               ],

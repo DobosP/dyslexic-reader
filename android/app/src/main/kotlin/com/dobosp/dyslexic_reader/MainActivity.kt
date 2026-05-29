@@ -11,7 +11,6 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -150,12 +149,13 @@ class MainActivity : FlutterActivity() {
                     PDDocument.load(file, password)
                 }
                 document.use { doc ->
-                    val stripper = PDFTextStripper().apply { sortByPosition = true }
-                    val text = stripper.getText(doc)
+                    val stripper = StructuredTextStripper()
+                    stripper.getText(doc) // side effect: collects line geometry
+                    val blocks = stripper.buildBlocks()
                     val payload = mapOf(
-                        "fullText" to text,
+                        "blocks" to blocks,
                         "pageCount" to doc.numberOfPages,
-                        "hasText" to text.trim().isNotEmpty(),
+                        "hasText" to blocks.isNotEmpty(),
                     )
                     mainHandler.post { result.success(payload) }
                 }

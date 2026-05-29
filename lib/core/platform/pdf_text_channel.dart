@@ -1,14 +1,17 @@
 import 'package:flutter/services.dart';
 
-/// Result of extracting text from a PDF on the native side.
+import '../../domain/models/reading_document.dart';
+
+/// Result of extracting structured text from a PDF on the native side.
 class PdfExtractionResult {
   const PdfExtractionResult({
-    required this.fullText,
+    required this.blocks,
     required this.pageCount,
     required this.hasText,
   });
 
-  final String fullText;
+  /// Typed blocks (headings/paragraphs) reconstructed by the native extractor.
+  final List<TextBlock> blocks;
   final int pageCount;
 
   /// False for image-only / scanned PDFs (no selectable text layer).
@@ -22,9 +25,10 @@ class PdfException implements Exception {
   String toString() => 'PdfException: $message';
 }
 
-/// Dart side of the native PDF bridge. Text extraction uses PdfBox-Android;
-/// page rendering uses Android's built-in `PdfRenderer`. See
-/// `android/app/src/main/kotlin/.../MainActivity.kt` and docs/ARCHITECTURE.md §5.1.
+/// Dart side of the native PDF bridge. Structured text extraction uses a
+/// PdfBox-Android subclass (coordinate + font heuristics → typed blocks); page
+/// rendering uses Android's built-in `PdfRenderer`. See MainActivity.kt /
+/// StructuredTextStripper.kt and docs/ARCHITECTURE.md.
 class PdfTextChannel {
   const PdfTextChannel();
 
@@ -37,10 +41,19 @@ class PdfTextChannel {
         {'path': path, 'password': password},
       );
       if (res == null) throw const PdfException('Extractor returned no data.');
+
+      final raw = (res['blocks'] as List?) ?? const [];
+      final blocks = <TextBlock>[];
+      for (final item in raw) {
+        final m = (item as Map).cast<String, dynamic>();
+        final text = (m['text'] as String?) ?? '';
+        if (text.trim().isEmpty) continue;
+        blocks.add(TextBlock(role: _roleFromType(m['type'] as String?), text: text));
+      }
       return PdfExtractionResult(
-        fullText: res['fullText'] as String? ?? '',
+        blocks: blocks,
         pageCount: (res['pageCount'] as num?)?.toInt() ?? 0,
-        hasText: res['hasText'] as bool? ?? false,
+        hasText: res['hasText'] as bool? ?? blocks.isNotEmpty,
       );
     } on PlatformException catch (e) {
       throw PdfException(e.message ?? 'PDF extraction failed.');
@@ -61,6 +74,19 @@ class PdfTextChannel {
       });
     } on PlatformException catch (e) {
       throw PdfException(e.message ?? 'PDF render failed.');
+    }
+  }
+
+  static BlockRole _roleFromType(String? type) {
+    switch (type) {
+      case 'h1':
+        return BlockRole.h1;
+      case 'h2':
+        return BlockRole.h2;
+      case 'h3':
+        return BlockRole.h3;
+      default:
+        return BlockRole.body;
     }
   }
 }

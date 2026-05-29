@@ -1,15 +1,21 @@
 import '../models/reading_document.dart';
 
-/// Returns the rendered height of a paragraph fragment's [text] at the reader's
-/// fixed column width and current text style.
-typedef MeasureHeight = double Function(String text);
+/// Returns the rendered height of a fragment's [text] when styled for [role] at
+/// the reader's fixed column width.
+typedef MeasureHeight = double Function(String text, BlockRole role);
 
 /// A run of words rendered together on one page (a whole paragraph, or the part
 /// of one that fits before a page break).
 class PageParagraph {
-  const PageParagraph({required this.words, required this.start, required this.end});
+  const PageParagraph({
+    required this.words,
+    required this.start,
+    required this.end,
+    required this.role,
+  });
 
   final List<Word> words;
+  final BlockRole role;
   final int start;
   final int end;
 
@@ -21,15 +27,12 @@ class ReaderPage {
   const ReaderPage({required this.paragraphs, required this.start, required this.end});
 
   final List<PageParagraph> paragraphs;
-
-  /// Character offsets (into the full text) of the first/last content on the page.
   final int start;
   final int end;
 }
 
 /// Produces pages one at a time from a cursor, so the reader can show the first
-/// page(s) immediately and compute the rest lazily / in the background instead
-/// of paginating the whole document up front.
+/// page(s) immediately and compute the rest lazily / in the background.
 class LazyPaginator {
   LazyPaginator({
     required this.doc,
@@ -43,10 +46,9 @@ class LazyPaginator {
   final double paragraphSpacing;
   final MeasureHeight measure;
 
-  int _pi = 0; // paragraph index
-  int _wi = 0; // word index within the current paragraph
+  int _pi = 0;
+  int _wi = 0;
 
-  /// Whether any content remains to be paginated.
   bool get hasMore {
     var pi = _pi, wi = _wi;
     while (pi < doc.paragraphs.length) {
@@ -57,13 +59,13 @@ class LazyPaginator {
     return false;
   }
 
-  /// Computes and returns the next page, advancing the cursor. Null when done.
   ReaderPage? next() {
     final cur = <PageParagraph>[];
     var curHeight = 0.0;
 
     while (_pi < doc.paragraphs.length) {
-      final words = doc.paragraphs[_pi].words;
+      final para = doc.paragraphs[_pi];
+      final words = para.words;
       if (_wi >= words.length) {
         _pi++;
         _wi = 0;
@@ -71,23 +73,22 @@ class LazyPaginator {
       }
       final spacing = cur.isEmpty ? 0.0 : paragraphSpacing;
       final avail = maxHeight - curHeight - spacing;
-      final take = _fitWords(words, _wi, avail, measure);
+      final take = _fitWords(words, _wi, para.role, avail, measure);
 
       if (take == 0) {
         if (cur.isEmpty) {
-          // One word won't fit even an empty page — force one to make progress.
-          _append(cur, words, _wi, 1);
+          _append(cur, words, _wi, 1, para.role);
           _advance(words, 1);
           return _page(cur);
         }
-        return _page(cur); // page full; resumes on the next call
+        return _page(cur);
       }
 
-      _append(cur, words, _wi, take);
-      curHeight += spacing + measure(_join(words, _wi, take));
+      _append(cur, words, _wi, take, para.role);
+      curHeight += spacing + measure(_join(words, _wi, take), para.role);
       final spilled = (_wi + take) < words.length;
       _advance(words, take);
-      if (spilled) return _page(cur); // paragraph spilled; page ends here
+      if (spilled) return _page(cur);
     }
     return cur.isEmpty ? null : _page(cur);
   }
@@ -107,7 +108,6 @@ class LazyPaginator {
 class Paginator {
   Paginator._();
 
-  /// Eagerly paginates the whole document (used in tests and small docs).
   static List<ReaderPage> paginate({
     required ReadingDocument doc,
     required double maxHeight,
@@ -132,8 +132,6 @@ class Paginator {
     return pages;
   }
 
-  /// Index of the page that should be shown for a saved [offset]: the last page
-  /// that starts at or before it.
   static int pageForOffset(List<ReaderPage> pages, int offset) {
     var result = 0;
     for (var i = 0; i < pages.length; i++) {
@@ -147,25 +145,34 @@ class Paginator {
   }
 }
 
-void _append(List<PageParagraph> cur, List<Word> words, int from, int count) {
+void _append(List<PageParagraph> cur, List<Word> words, int from, int count, BlockRole role) {
   final slice = words.sublist(from, from + count);
-  cur.add(PageParagraph(words: slice, start: slice.first.start, end: slice.last.end));
+  cur.add(PageParagraph(
+    words: slice,
+    start: slice.first.start,
+    end: slice.last.end,
+    role: role,
+  ));
 }
 
 String _join(List<Word> words, int from, int count) =>
     words.sublist(from, from + count).map((w) => w.text).join(' ');
 
-/// How many words starting at [from] fit within [avail] height (binary search,
-/// since height is monotonic in word count). 0 if not even one word fits.
-int _fitWords(List<Word> words, int from, double avail, MeasureHeight measure) {
+int _fitWords(
+  List<Word> words,
+  int from,
+  BlockRole role,
+  double avail,
+  MeasureHeight measure,
+) {
   final remaining = words.length - from;
   if (remaining <= 0 || avail <= 0) return 0;
-  if (measure(words[from].text) > avail) return 0;
+  if (measure(words[from].text, role) > avail) return 0;
 
   var lo = 1, hi = remaining, best = 1;
   while (lo <= hi) {
     final mid = (lo + hi) ~/ 2;
-    if (measure(_join(words, from, mid)) <= avail) {
+    if (measure(_join(words, from, mid), role) <= avail) {
       best = mid;
       lo = mid + 1;
     } else {

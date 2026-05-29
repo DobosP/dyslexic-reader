@@ -16,8 +16,9 @@ class ImportException implements Exception {
   String toString() => message;
 }
 
-/// Owns the on-device document library: a JSON index plus a cached text file
-/// (and, for PDFs, a copied original) per document, under the app docs dir.
+/// Owns the on-device document library: a JSON index plus a cached **typed
+/// blocks** file per document (and, for PDFs, a copied original) under the app
+/// documents directory.
 class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   Directory? _root;
   File? _indexFile;
@@ -32,7 +33,6 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       _indexFile = File('${root.path}/index.json');
       return _readIndex();
     } catch (_) {
-      // Platform storage unavailable (e.g. unit tests) — start empty.
       return <LibraryEntry>[];
     }
   }
@@ -63,8 +63,6 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return openFile(acceptedTypeGroups: [group]);
   }
 
-  /// Extract/read a picked [file] and store it. Scanned PDFs (no text layer)
-  /// are still imported so they can be read in the original page view.
   Future<LibraryEntry> importPicked(XFile file) async {
     if (file.path.isEmpty) {
       throw const ImportException('Could not read the selected file.');
@@ -72,8 +70,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return importFromPath(file.path, file.name);
   }
 
-  /// Import a document from a filesystem [path] with display [name] (used by the
-  /// picker and by open-with / share intents).
+  /// Import from a filesystem [path] (picker or open-with/share intent).
   Future<LibraryEntry> importFromPath(String path, String name) async {
     final file = File(path);
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
@@ -84,7 +81,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       final bytes = await file.readAsBytes();
       return _store(
         title: title,
-        text: res.fullText,
+        blocks: res.blocks,
         source: DocSource.pdf,
         hasTextLayer: res.hasText,
         originalPath: path,
@@ -95,7 +92,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     final text = await file.readAsString();
     return _store(
       title: title,
-      text: text,
+      blocks: Tokenizer.blocksFromText(text),
       source: DocSource.txt,
       hasTextLayer: true,
       originalPath: path,
@@ -104,7 +101,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
 
   Future<LibraryEntry> _store({
     required String title,
-    required String text,
+    required List<TextBlock> blocks,
     required DocSource source,
     required bool hasTextLayer,
     String? originalPath,
@@ -115,8 +112,8 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     if (root == null) throw const ImportException('Storage is not available.');
     final id = DateTime.now().microsecondsSinceEpoch.toString();
 
-    final textFile = File('${root.path}/$id.txt');
-    await textFile.writeAsString(text);
+    final blocksFile = File('${root.path}/$id.json');
+    await blocksFile.writeAsString(TextBlock.encodeList(blocks));
 
     String? pdfPath;
     if (pdfBytes != null) {
@@ -125,13 +122,12 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       pdfPath = pdfFile.path;
     }
 
-    final doc = Tokenizer.parse(text, title: title);
     final entry = LibraryEntry(
       id: id,
       title: title,
       source: source,
-      cacheTextPath: textFile.path,
-      wordCount: doc.wordCount,
+      cacheBlocksPath: blocksFile.path,
+      wordCount: Tokenizer.fromBlocks(blocks).wordCount,
       pageCount: pageCount,
       importedAt: DateTime.now(),
       originalPath: originalPath,
@@ -146,11 +142,10 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   }
 
   Future<ReadingDocument> open(LibraryEntry e) async {
-    final text = await File(e.cacheTextPath).readAsString();
-    return Tokenizer.parse(text, title: e.title);
+    final blocks = TextBlock.decodeList(await File(e.cacheBlocksPath).readAsString());
+    return Tokenizer.fromBlocks(blocks, title: e.title);
   }
 
-  /// Persist the reading position (char offset) for [id]; no-op otherwise.
   Future<void> saveProgress(String id, int charOffset) async {
     final list = state.valueOrNull;
     if (list == null) return;
@@ -183,8 +178,8 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     if (idx < 0) return;
     final entry = list[idx];
     final bookmarks = entry.bookmarks
-        .where((b) => !(b.offset == bookmark.offset &&
-            b.createdAt == bookmark.createdAt))
+        .where((b) =>
+            !(b.offset == bookmark.offset && b.createdAt == bookmark.createdAt))
         .toList();
     final next = [...list];
     next[idx] = entry.copyWith(bookmarks: bookmarks);
@@ -193,7 +188,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   }
 
   Future<void> delete(LibraryEntry e) async {
-    for (final p in [e.cacheTextPath, e.pdfPath]) {
+    for (final p in [e.cacheBlocksPath, e.pdfPath]) {
       if (p == null) continue;
       try {
         final f = File(p);

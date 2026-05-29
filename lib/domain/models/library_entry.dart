@@ -34,15 +34,15 @@ class Bookmark {
       );
 }
 
-/// Metadata for a document saved in the on-device library. Extracted/plain text
-/// is cached at [cacheTextPath]; for PDFs the original file is copied to
-/// [pdfPath] so the "original pages" view can render it.
+/// Metadata for a document saved in the on-device library. The extracted
+/// **typed blocks** are cached as JSON at [cacheBlocksPath]; for PDFs the
+/// original file is copied to [pdfPath] for the "original pages" view.
 class LibraryEntry {
   const LibraryEntry({
     required this.id,
     required this.title,
     required this.source,
-    required this.cacheTextPath,
+    required this.cacheBlocksPath,
     required this.wordCount,
     required this.pageCount,
     required this.importedAt,
@@ -56,7 +56,7 @@ class LibraryEntry {
   final String id;
   final String title;
   final DocSource source;
-  final String cacheTextPath;
+  final String cacheBlocksPath;
   final int wordCount;
   final int pageCount;
   final DateTime importedAt;
@@ -82,7 +82,7 @@ class LibraryEntry {
         id: id,
         title: title,
         source: source,
-        cacheTextPath: cacheTextPath,
+        cacheBlocksPath: cacheBlocksPath,
         wordCount: wordCount,
         pageCount: pageCount,
         importedAt: importedAt,
@@ -97,7 +97,7 @@ class LibraryEntry {
         'id': id,
         'title': title,
         'source': source.name,
-        'cacheTextPath': cacheTextPath,
+        'cacheBlocksPath': cacheBlocksPath,
         'wordCount': wordCount,
         'pageCount': pageCount,
         'importedAt': importedAt.toIso8601String(),
@@ -115,7 +115,7 @@ class LibraryEntry {
           (s) => s.name == j['source'],
           orElse: () => DocSource.txt,
         ),
-        cacheTextPath: j['cacheTextPath'] as String,
+        cacheBlocksPath: j['cacheBlocksPath'] as String,
         wordCount: (j['wordCount'] as num?)?.toInt() ?? 0,
         pageCount: (j['pageCount'] as num?)?.toInt() ?? 0,
         importedAt: DateTime.tryParse(j['importedAt'] as String? ?? '') ??
