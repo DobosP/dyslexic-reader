@@ -14,15 +14,15 @@ strongest-evidence features first.
 - [x] Library screen: read bundled sample / paste your own text
 - [x] CI: `flutter analyze` + `flutter test` + build signed APK (GitHub Actions)
 
-## Phase 1 — PDF import & reflow 🚧
-- [x] `file_picker` import for PDFs and `.txt` (share-intent: later)
-- [x] Native bridge: `PdfTextExtractor` (PdfBox-Android) — full text + page count
-- [x] Text-layer detection → reflow born-digital PDFs (scanned PDFs show an
-      "OCR coming later" message instead of failing)
+## Phase 1 — PDF import & reflow ✅
+- [x] Import PDFs and `.txt` via the official `file_selector`
+- [x] Open-with & share-to intents (PDF/text opened or shared from other apps)
+- [x] Native bridge: text extraction (PdfBox-Android) + page render (Android PdfRenderer)
+- [x] Text-layer detection → reflow born-digital PDFs
+- [x] Scanned/image PDFs imported and shown in an original page view
 - [x] On-device document library (JSON index + cached text): list, reopen, delete
+- [x] Remember & restore reading position per document
 - [ ] Word-position extraction (for highlight/ruler) — folded into the TTS phase
-- [ ] Reading progress (remember last position) — deferred
-- [ ] "Original view" fallback (pdfrx) for layout-heavy / scanned pages — deferred
 - [ ] Migrate the flat JSON library index to drift if it outgrows a single file
 
 ## Phase 2 — Read-aloud + highlighting (highest value)

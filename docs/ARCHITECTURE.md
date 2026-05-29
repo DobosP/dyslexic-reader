@@ -94,13 +94,13 @@ import (file_picker / share intent / paste)
 | Structured persistence | **drift** (SQLite) | MIT | Library, bookmarks, reading progress. Typed, migratable. |
 | Simple settings | **shared_preferences** | BSD | ReadingPrefs key‑values. |
 | PDF **text** extraction | **Native bridge → PdfBox‑Android** | Apache‑2.0 | Only reliable text+positions on Android; commercial‑safe. |
-| PDF **page render** (original view) | **pdfrx** (PDFium) | BSD/Apache | Maintained, fast; fallback "original" view + OCR raster source. |
+| PDF **page render** (original view) | **Android `PdfRenderer`** (built-in) via native bridge | AOSP | No extra dep; renders scanned/layout-heavy pages and is the OCR raster source. |
 | OCR | **google_mlkit_text_recognition** | Apache‑2.0 | On‑device, 5 scripts; Tesseract later for more. |
 | Language detection | **google_mlkit_language_id** | Apache‑2.0 | On‑device, 100+ languages → voice/script selection. |
 | TTS (word‑sync) | **Native bridge → Android `TextToSpeech`** (`onRangeStart`) | first‑party | Only reliable word‑boundary highlighting. |
 | TTS (offline neural, later) | **sherpa_onnx** (Piper) | Apache‑2.0 | Privacy/quality upgrade; per‑language model. |
 | Fonts | **OpenDyslexic** (opt‑in), **Lexend**, system sans‑serif | OFL | Spacing matters more than font; offer choice. |
-| File import | **file_picker**, share‑intent (`receive_sharing_intent`) | MIT | Open/paste/share PDFs & text. |
+| File import | **file_selector** (official) + native open‑with/share intents | BSD | Open/paste/share PDFs & text. |
 | Lint | **flutter_lints** / `analysis_options.yaml` | BSD | — |
 
 > **Licensing guardrail:** everything above is **Apache‑2.0 / BSD / MIT / OFL / first‑party**.
