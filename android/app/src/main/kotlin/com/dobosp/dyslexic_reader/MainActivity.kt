@@ -90,11 +90,11 @@ class MainActivity : FlutterActivity() {
         if (intent == null) return
         when (intent.action) {
             Intent.ACTION_VIEW ->
-                intent.data?.let { uri -> copyToCache(uri)?.let { pendingFile = it } }
+                intent.data?.let { uri -> pendingFile = resolveUri(uri) }
             Intent.ACTION_SEND -> {
                 val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
                 if (uri != null) {
-                    copyToCache(uri)?.let { pendingFile = it }
+                    pendingFile = resolveUri(uri)
                 } else {
                     val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
                     if (!text.isNullOrBlank()) pendingFile = writeSharedText(text)
@@ -111,19 +111,23 @@ class MainActivity : FlutterActivity() {
         null
     }
 
-    private fun copyToCache(uri: Uri): Map<String, String>? {
+    private fun resolveUri(uri: Uri): Map<String, String> {
         return try {
-            val name = queryName(uri) ?: "shared_${System.currentTimeMillis()}"
-            val outFile = File(cacheDir, "incoming_${System.currentTimeMillis()}_$name")
-            val input = contentResolver.openInputStream(uri) ?: return null
+            val name = queryName(uri) ?: "document"
+            val outFile = File(cacheDir, "incoming_${System.currentTimeMillis()}_${sanitize(name)}")
+            val input = contentResolver.openInputStream(uri)
+                ?: return mapOf("error" to "Could not open the file (no input stream).")
             input.use { source ->
                 outFile.outputStream().use { sink -> source.copyTo(sink) }
             }
             mapOf("path" to outFile.absolutePath, "name" to name)
         } catch (e: Exception) {
-            null
+            mapOf("error" to "${e.javaClass.simpleName}: ${e.message ?: "unknown"}")
         }
     }
+
+    private fun sanitize(name: String): String =
+        name.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
 
     private fun queryName(uri: Uri): String? {
         if (uri.scheme == "file") return uri.path?.let { File(it).name }

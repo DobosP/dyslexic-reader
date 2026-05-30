@@ -49,6 +49,7 @@ class ReadingPrefs {
     this.paragraphSpacingEm = 1.0,
     this.maxLineChars = 66,
     this.bionicEnabled = false,
+    this.sentencePacing = false,
   });
 
   final ReadingFontFamily fontFamily;
@@ -77,6 +78,9 @@ class ReadingPrefs {
   /// only as an opt-in display mode.
   final bool bionicEnabled;
 
+  /// When on, each sentence is shown as its own spaced block (pacing aid).
+  final bool sentencePacing;
+
   // --- Derived values used by the renderer ---
   double get letterSpacingPx => letterSpacingEm * fontSizeSp;
   double get wordSpacingPx => wordSpacingEm * fontSizeSp;
@@ -96,6 +100,7 @@ class ReadingPrefs {
     double? paragraphSpacingEm,
     double? maxLineChars,
     bool? bionicEnabled,
+    bool? sentencePacing,
   }) {
     return ReadingPrefs(
       fontFamily: fontFamily ?? this.fontFamily,
@@ -107,6 +112,7 @@ class ReadingPrefs {
       paragraphSpacingEm: paragraphSpacingEm ?? this.paragraphSpacingEm,
       maxLineChars: maxLineChars ?? this.maxLineChars,
       bionicEnabled: bionicEnabled ?? this.bionicEnabled,
+      sentencePacing: sentencePacing ?? this.sentencePacing,
     );
   }
 
@@ -120,6 +126,7 @@ class ReadingPrefs {
         'paragraphSpacingEm': paragraphSpacingEm,
         'maxLineChars': maxLineChars,
         'bionicEnabled': bionicEnabled,
+        'sentencePacing': sentencePacing,
       };
 
   factory ReadingPrefs.fromJson(Map<String, dynamic> j) {
@@ -134,6 +141,7 @@ class ReadingPrefs {
       paragraphSpacingEm: _toDouble(j['paragraphSpacingEm'], d.paragraphSpacingEm),
       maxLineChars: _toDouble(j['maxLineChars'], d.maxLineChars),
       bionicEnabled: j['bionicEnabled'] as bool? ?? d.bionicEnabled,
+      sentencePacing: j['sentencePacing'] as bool? ?? d.sentencePacing,
     );
   }
 

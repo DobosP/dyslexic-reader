@@ -132,6 +132,15 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
+            title: const Text('Sentence pacing'),
+            subtitle: const Text(
+              'Show each sentence as its own spaced block for calmer pacing.',
+            ),
+            value: prefs.sentencePacing,
+            onChanged: c.setSentencePacing,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
             title: const Text('Bionic reading'),
             subtitle: const Text(
               'Bold the start of each word. Optional — limited evidence.',

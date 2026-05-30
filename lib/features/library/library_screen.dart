@@ -80,10 +80,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     try {
       final incoming = await const IncomingFileChannel().consume();
       if (incoming == null || !mounted) return;
+      if (incoming.isError) {
+        _snack("Couldn't open that file: ${incoming.error}");
+        return;
+      }
+      if (!incoming.hasFile) return;
       await _runImport(
         () => ref
             .read(libraryControllerProvider.notifier)
-            .importFromPath(incoming.path, incoming.name),
+            .importFromPath(incoming.path!, incoming.name!),
       );
     } finally {
       _checkingIncoming = false;

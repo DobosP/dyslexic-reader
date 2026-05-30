@@ -9,6 +9,7 @@ void main() {
       fontSizeSp: 24,
       lineHeight: 1.8,
       bionicEnabled: true,
+      sentencePacing: true,
     );
     final back = ReadingPrefs.decode(p.encode());
     expect(back.fontFamily, ReadingFontFamily.openDyslexic);
@@ -16,6 +17,7 @@ void main() {
     expect(back.fontSizeSp, 24);
     expect(back.lineHeight, 1.8);
     expect(back.bionicEnabled, true);
+    expect(back.sentencePacing, true);
   });
 
   test('fromJson tolerates missing keys and bad enum names', () {

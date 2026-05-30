@@ -4,10 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme/reading_theme.dart';
 import '../../domain/models/library_entry.dart';
 import '../../domain/models/reading_document.dart';
+import '../../domain/reflow/sentences.dart';
+import '../../domain/structure/document_structure.dart';
 import '../library/library_controller.dart';
 import '../settings/reading_prefs_controller.dart';
 import '../settings/settings_screen.dart';
 import 'original_pdf_screen.dart';
+import 'widgets/outline_drawer.dart';
 import 'widgets/paginated_reader.dart';
 
 class ReaderScreen extends ConsumerStatefulWidget {
@@ -23,7 +26,24 @@ class ReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _ReaderScreenState extends ConsumerState<ReaderScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final PageReaderController _pageCtrl = PageReaderController();
+
+  // Memoized so identity stays stable across unrelated rebuilds (avoids
+  // needless re-pagination).
+  ReadingDocument? _effectiveDoc;
+  bool? _lastPacing;
+  List<OutlineItem>? _outline;
+  ReadingStats? _stats;
+
+  ReadingDocument _resolveDoc(bool pacing) {
+    if (_effectiveDoc == null || _lastPacing != pacing) {
+      _lastPacing = pacing;
+      _effectiveDoc =
+          pacing ? Sentences.splitDocument(widget.document) : widget.document;
+    }
+    return _effectiveDoc!;
+  }
 
   @override
   void dispose() {
@@ -43,6 +63,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final palette = paletteFor(prefs.themeId);
     final entry = widget.entry;
     final canViewOriginal = entry?.pdfPath != null && entry!.pageCount > 0;
+    final doc = _resolveDoc(prefs.sentencePacing);
 
     final style = TextStyle(
       fontFamily: prefs.fontFamily.family,
@@ -54,12 +75,23 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: palette.background,
+      endDrawer: OutlineDrawer(
+        outline: _outline ??= DocumentStructure.outline(widget.document),
+        stats: _stats ??= DocumentStructure.stats(widget.document),
+        onJump: _pageCtrl.jumpToOffset,
+      ),
       appBar: AppBar(
         backgroundColor: palette.background,
         foregroundColor: palette.onBackground,
         title: Text(widget.document.title, overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(
+            tooltip: 'Contents',
+            icon: const Icon(Icons.toc),
+            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+          ),
           if (entry != null)
             IconButton(
               tooltip: 'Bookmark this page',
@@ -105,7 +137,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           children: [
             Expanded(
               child: PaginatedReader(
-                document: widget.document,
+                document: doc,
                 style: style,
                 maxColumnWidth: prefs.maxLineWidthPx,
                 paragraphSpacing: prefs.paragraphSpacingPx,

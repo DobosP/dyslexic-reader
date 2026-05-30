@@ -24,6 +24,7 @@ class ReadingPrefsController extends Notifier<ReadingPrefs> {
       _update(state.copyWith(paragraphSpacingEm: v));
   void setMaxLineChars(double v) => _update(state.copyWith(maxLineChars: v));
   void setBionic(bool v) => _update(state.copyWith(bionicEnabled: v));
+  void setSentencePacing(bool v) => _update(state.copyWith(sentencePacing: v));
   void reset() => _update(const ReadingPrefs());
 }
 
