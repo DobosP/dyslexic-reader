@@ -5,9 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/platform/pdf_text_channel.dart';
+import '../../data/services/ocr_service.dart';
 import '../../domain/models/library_entry.dart';
 import '../../domain/models/reading_document.dart';
 import '../../domain/reflow/tokenizer.dart';
+
+/// Reports OCR progress (pages done / total) so the UI can show it.
+typedef OcrProgress = void Function(int done, int total);
 
 class ImportException implements Exception {
   const ImportException(this.message);
@@ -17,8 +21,7 @@ class ImportException implements Exception {
 }
 
 /// Owns the on-device document library: a JSON index plus a cached **typed
-/// blocks** file per document (and, for PDFs, a copied original) under the app
-/// documents directory.
+/// blocks** file per document (and, for PDFs, a copied original).
 class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   Directory? _root;
   File? _indexFile;
@@ -63,15 +66,20 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return openFile(acceptedTypeGroups: [group]);
   }
 
-  Future<LibraryEntry> importPicked(XFile file) async {
+  Future<LibraryEntry> importPicked(XFile file, {OcrProgress? onOcrProgress}) async {
     if (file.path.isEmpty) {
       throw const ImportException('Could not read the selected file.');
     }
-    return importFromPath(file.path, file.name);
+    return importFromPath(file.path, file.name, onOcrProgress: onOcrProgress);
   }
 
   /// Import from a filesystem [path] (picker or open-with/share intent).
-  Future<LibraryEntry> importFromPath(String path, String name) async {
+  /// Scanned PDFs (no text layer) are OCR'd on-device into text.
+  Future<LibraryEntry> importFromPath(
+    String path,
+    String name, {
+    OcrProgress? onOcrProgress,
+  }) async {
     final file = File(path);
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     final title = _stripExtension(name);
@@ -79,16 +87,30 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     if (ext == 'pdf') {
       final res = await const PdfTextChannel().extractText(path);
       final bytes = await file.readAsBytes();
+      if (res.hasText) {
+        return _store(
+          title: title,
+          blocks: res.blocks,
+          source: DocSource.pdf,
+          hasTextLayer: true,
+          originalPath: path,
+          pdfBytes: bytes,
+          pageCount: res.pageCount,
+        );
+      }
+      // Scanned / image-only PDF → OCR each page on-device.
+      final ocrBlocks = await _ocrPdf(path, res.pageCount, onOcrProgress);
       return _store(
         title: title,
-        blocks: res.blocks,
+        blocks: ocrBlocks,
         source: DocSource.pdf,
-        hasTextLayer: res.hasText,
+        hasTextLayer: ocrBlocks.isNotEmpty,
         originalPath: path,
         pdfBytes: bytes,
         pageCount: res.pageCount,
       );
     }
+
     final text = await file.readAsString();
     return _store(
       title: title,
@@ -97,6 +119,37 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       hasTextLayer: true,
       originalPath: path,
     );
+  }
+
+  /// Render each page (native PdfRenderer) and OCR it into body blocks.
+  Future<List<TextBlock>> _ocrPdf(String path, int pageCount, OcrProgress? onProgress) async {
+    if (pageCount <= 0) return const [];
+    const channel = PdfTextChannel();
+    final ocr = OcrService();
+    final tmpDir = await getTemporaryDirectory();
+    final blocks = <TextBlock>[];
+    try {
+      for (var i = 0; i < pageCount; i++) {
+        onProgress?.call(i, pageCount);
+        final png = await channel.renderPage(path, i, targetWidth: 1600);
+        if (png == null) continue;
+        final tmp = File('${tmpDir.path}/ocr_${DateTime.now().microsecondsSinceEpoch}_$i.png');
+        await tmp.writeAsBytes(png);
+        try {
+          for (final text in await ocr.recognizeBlocks(tmp.path)) {
+            blocks.add(TextBlock(role: BlockRole.body, text: text));
+          }
+        } finally {
+          try {
+            await tmp.delete();
+          } catch (_) {}
+        }
+      }
+      onProgress?.call(pageCount, pageCount);
+    } finally {
+      await ocr.dispose();
+    }
+    return blocks;
   }
 
   Future<LibraryEntry> _store({

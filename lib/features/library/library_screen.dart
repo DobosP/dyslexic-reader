@@ -15,7 +15,7 @@ import 'paste_text_screen.dart';
 import 'sample_text.dart';
 
 /// Opens a library entry: reflow view when it has a text layer, otherwise the
-/// original page view (scanned PDFs).
+/// original page view (scanned PDFs whose OCR found nothing).
 Future<void> openLibraryEntry(
   BuildContext context,
   WidgetRef ref,
@@ -86,9 +86,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       }
       if (!incoming.hasFile) return;
       await _runImport(
-        () => ref
+        (onProgress) => ref
             .read(libraryControllerProvider.notifier)
-            .importFromPath(incoming.path!, incoming.name!),
+            .importFromPath(incoming.path!, incoming.name!, onOcrProgress: onProgress),
       );
     } finally {
       _checkingIncoming = false;
@@ -106,28 +106,39 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     }
     if (file == null) return; // cancelled
     final picked = file;
-    await _runImport(() => controller.importPicked(picked));
+    await _runImport((onProgress) =>
+        controller.importPicked(picked, onOcrProgress: onProgress));
   }
 
-  /// Run [doImport] with a progress spinner, then open the result.
-  Future<void> _runImport(Future<LibraryEntry> Function() doImport) async {
+  /// Run [doImport] with a progress dialog (OCR pages report progress), then open.
+  Future<void> _runImport(
+    Future<LibraryEntry> Function(OcrProgress onProgress) doImport,
+  ) async {
     if (!mounted) return;
+    final message = ValueNotifier<String>('Reading document…');
     unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => _ImportProgressDialog(message: message),
     ));
 
     LibraryEntry? entry;
     Object? failure;
     try {
-      entry = await doImport();
+      entry = await doImport((done, total) {
+        message.value =
+            total > 0 ? 'Recognizing text… $done / $total' : 'Recognizing text…';
+      });
     } catch (e) {
       failure = e;
     }
 
-    if (!mounted) return;
+    if (!mounted) {
+      message.dispose();
+      return;
+    }
     Navigator.of(context).pop(); // dismiss progress
+    message.dispose();
 
     if (failure != null) {
       _snack('Import failed: $failure');
@@ -135,8 +146,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     }
     if (entry != null) {
       if (!entry.hasTextLayer) {
-        _snack(
-            'No text layer found — showing the original pages. OCR is coming later.');
+        _snack("Couldn't recognize text — showing the original pages.");
       }
       await openLibraryEntry(context, ref, entry);
     }
@@ -176,7 +186,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           Text('Read more comfortably', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
-            'Open a PDF or text file and re-render it with the spacing, font, and colours that suit you.',
+            'Open a PDF or text file and re-render it with the spacing, font, and colours that suit you. Scanned PDFs are converted to text with on-device OCR.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 24),
@@ -220,6 +230,40 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ImportProgressDialog extends StatelessWidget {
+  const _ImportProgressDialog({required this.message});
+
+  final ValueNotifier<String> message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              const SizedBox(width: 16),
+              Flexible(
+                child: ValueListenableBuilder<String>(
+                  valueListenable: message,
+                  builder: (_, msg, _) => Text(msg),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
