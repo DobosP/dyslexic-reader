@@ -3,6 +3,7 @@ package com.dobosp.dyslexic_reader
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** A line of text with geometry, collected while stripping. */
@@ -26,6 +27,7 @@ private data class LineInfo(
 class StructuredTextStripper : PDFTextStripper() {
     private val lines = mutableListOf<LineInfo>()
     private val pageHeights = mutableMapOf<Int, Float>()
+    private val pageWidths = mutableMapOf<Int, Float>()
 
     init {
         sortByPosition = true
@@ -33,6 +35,7 @@ class StructuredTextStripper : PDFTextStripper() {
 
     override fun startPage(page: PDPage) {
         pageHeights[currentPageNo] = page.mediaBox.height
+        pageWidths[currentPageNo] = page.mediaBox.width
         super.startPage(page)
     }
 
@@ -110,10 +113,13 @@ class StructuredTextStripper : PDFTextStripper() {
             val type = classify(line, bodySize)
             val startNew = when {
                 curType == null -> true
-                type != "p" -> true // headings are their own block
-                curType != "p" -> true // previous block was a heading
-                prev != null && isParagraphBreak(prev, line, medianAdvance) -> true
-                else -> false
+                curType == "p" && type == "p" && prev != null ->
+                    isParagraphBreak(prev, line, medianAdvance)
+                // merge consecutive heading lines of the same level (multi-line titles)
+                curType != "p" && type == curType && prev != null &&
+                    line.page == prev.page &&
+                    (line.top - prev.top) in 0f..(2.4f * line.size) -> false
+                else -> true
             }
             if (startNew) {
                 flush()
@@ -129,13 +135,48 @@ class StructuredTextStripper : PDFTextStripper() {
     }
 
     private fun classify(line: LineInfo, bodySize: Float): String {
-        val ratio = if (bodySize > 0) line.size / bodySize else 1f
-        if (ratio >= 1.8f) return "h1"
-        if (ratio >= 1.4f) return "h2"
-        if (ratio >= 1.2f) return "h3"
-        val wordCount = line.text.split(Regex("\\s+")).size
-        if (line.boldFraction >= 0.6f && wordCount in 1..8) return "h3"
+        val ratio = if (bodySize > 0f) line.size / bodySize else 1f
+        if (ratio >= 1.7f) return "h1"
+        if (ratio >= 1.35f) return "h2"
+        if (ratio >= 1.15f) return "h3"
+
+        // Same-size heading signals — only for short lines that don't read like
+        // a sentence (so we don't promote ordinary body lines).
+        val text = line.text.trim()
+        val wordCount = text.split(Regex("\\s+")).size
+        val sentenceLike = text.endsWith(".") || text.endsWith(",") || text.endsWith(";")
+        if (wordCount in 1..12 && !sentenceLike) {
+            if (isNumberedHeading(text)) return "h2"
+            if (isMostlyUpper(text)) return "h2"
+            if (line.boldFraction >= 0.6f) return "h3"
+            val pw = pageWidths[line.page] ?: 0f
+            if (pw > 0f && isCentered(line, pw)) return "h3"
+        }
         return "p"
+    }
+
+    private fun isNumberedHeading(text: String): Boolean {
+        val lower = text.lowercase()
+        if (Regex("^(chapter|section|part|book|prologue|epilogue|appendix)\\b")
+                .containsMatchIn(lower)
+        ) {
+            return true
+        }
+        return Regex("^\\d+([.)]\\d+)*[.)]?\\s+\\S").containsMatchIn(text)
+    }
+
+    private fun isMostlyUpper(text: String): Boolean {
+        val letters = text.filter { it.isLetter() }
+        if (letters.length < 2) return false
+        val upper = letters.count { it.isUpperCase() }
+        return upper.toFloat() / letters.length >= 0.7f
+    }
+
+    private fun isCentered(line: LineInfo, pageWidth: Float): Boolean {
+        val left = line.leftX
+        val right = pageWidth - line.rightX
+        if (left <= pageWidth * 0.12f || right <= pageWidth * 0.12f) return false
+        return abs(left - right) < pageWidth * 0.12f
     }
 
     private fun isParagraphBreak(prev: LineInfo, line: LineInfo, medianAdvance: Float): Boolean {
@@ -158,7 +199,6 @@ class StructuredTextStripper : PDFTextStripper() {
         }
     }
 
-    /** Modal font size, weighted by characters so body text wins over headings. */
     private fun modeSize(lines: List<LineInfo>): Float {
         val counts = HashMap<Int, Int>()
         for (l in lines) {
@@ -181,7 +221,6 @@ class StructuredTextStripper : PDFTextStripper() {
         return advances[advances.size / 2]
     }
 
-    /** Drop lines that repeat near the top/bottom of many pages (running heads/page numbers). */
     private fun dropRunningHeadersFooters(lines: List<LineInfo>): List<LineInfo> {
         if (lines.map { it.page }.toSet().size < 3) return lines
         val seenOnPages = HashMap<String, MutableSet<Int>>()
