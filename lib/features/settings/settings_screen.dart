@@ -129,6 +129,15 @@ class SettingsScreen extends ConsumerWidget {
             display: '${prefs.maxLineChars.round()} chars',
             onChanged: c.setMaxLineChars,
           ),
+          _SliderTile(
+            label: 'Read-along pace',
+            value: prefs.readingWpm,
+            min: 60,
+            max: 400,
+            divisions: 34,
+            display: '${prefs.readingWpm.round()} wpm',
+            onChanged: c.setReadingWpm,
+          ),
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

@@ -131,7 +131,8 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     try {
       for (var i = 0; i < pageCount; i++) {
         onProgress?.call(i, pageCount);
-        final png = await channel.renderPage(path, i, targetWidth: 1600);
+        // Render at higher resolution than the on-screen view for better OCR accuracy.
+        final png = await channel.renderPage(path, i, targetWidth: 2200);
         if (png == null) continue;
         final tmp = File('${tmpDir.path}/ocr_${DateTime.now().microsecondsSinceEpoch}_$i.png');
         await tmp.writeAsBytes(png);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -17,8 +19,6 @@ class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({super.key, required this.document, this.entry});
 
   final ReadingDocument document;
-
-  /// The library entry this came from, if any. Enables progress + bookmarks.
   final LibraryEntry? entry;
 
   @override
@@ -29,12 +29,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final PageReaderController _pageCtrl = PageReaderController();
 
-  // Memoized so identity stays stable across unrelated rebuilds (avoids
-  // needless re-pagination).
+  // Memoized derived data (stable identity across unrelated rebuilds).
   ReadingDocument? _effectiveDoc;
   bool? _lastPacing;
   List<OutlineItem>? _outline;
   ReadingStats? _stats;
+  List<SentenceRef>? _sentences;
+  ReadingDocument? _sentencesDoc;
+
+  // Read-along pacer state.
+  int _currentSentence = -1;
+  bool _playing = false;
+  Timer? _timer;
 
   ReadingDocument _resolveDoc(bool pacing) {
     if (_effectiveDoc == null || _lastPacing != pacing) {
@@ -45,8 +51,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     return _effectiveDoc!;
   }
 
+  List<SentenceRef> _resolveSentences(ReadingDocument doc) {
+    if (_sentences == null || !identical(_sentencesDoc, doc)) {
+      _sentencesDoc = doc;
+      _sentences = DocumentStructure.sentenceRefs(doc);
+    }
+    return _sentences!;
+  }
+
   @override
   void dispose() {
+    _timer?.cancel();
     final entry = widget.entry;
     if (entry != null) {
       ref
@@ -57,6 +72,50 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     super.dispose();
   }
 
+  // --- Read-along pacer ---
+
+  void _togglePlay() => _playing ? _pause() : _play();
+
+  void _play() {
+    final sentences = _sentences ?? const <SentenceRef>[];
+    if (sentences.isEmpty) return;
+    setState(() {
+      _playing = true;
+      if (_currentSentence < 0 || _currentSentence >= sentences.length) {
+        _currentSentence =
+            DocumentStructure.sentenceIndexAtOffset(sentences, _pageCtrl.currentOffset);
+      }
+    });
+    _tick();
+  }
+
+  void _pause() {
+    _timer?.cancel();
+    setState(() => _playing = false);
+  }
+
+  void _tick() {
+    if (!_playing) return;
+    final sentences = _sentences ?? const <SentenceRef>[];
+    if (_currentSentence < 0 || _currentSentence >= sentences.length) {
+      _pause();
+      return;
+    }
+    final ref0 = sentences[_currentSentence];
+    _pageCtrl.ensureVisible(ref0.start);
+    final wpm = ref.read(readingPrefsProvider).readingWpm.clamp(40.0, 600.0);
+    final seconds = (ref0.wordCount / wpm * 60).clamp(0.6, 8.0);
+    _timer = Timer(Duration(milliseconds: (seconds * 1000).round()), () {
+      if (!mounted || !_playing) return;
+      if (_currentSentence + 1 >= sentences.length) {
+        _pause(); // reached the end
+        return;
+      }
+      setState(() => _currentSentence++);
+      _tick();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final prefs = ref.watch(readingPrefsProvider);
@@ -64,6 +123,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final entry = widget.entry;
     final canViewOriginal = entry?.pdfPath != null && entry!.pageCount > 0;
     final doc = _resolveDoc(prefs.sentencePacing);
+    final sentences = _resolveSentences(doc);
 
     final style = TextStyle(
       fontFamily: prefs.fontFamily.family,
@@ -74,6 +134,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       color: palette.onBackground,
     );
 
+    final hi = (_currentSentence >= 0 && _currentSentence < sentences.length)
+        ? sentences[_currentSentence]
+        : null;
+
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: palette.background,
@@ -82,6 +146,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         stats: _stats ??= DocumentStructure.stats(widget.document),
         onJump: _pageCtrl.jumpToOffset,
       ),
+      floatingActionButton: sentences.isEmpty
+          ? null
+          : FloatingActionButton(
+              backgroundColor: palette.accent,
+              foregroundColor: palette.background,
+              tooltip: _playing ? 'Pause read-along' : 'Start read-along',
+              onPressed: _togglePlay,
+              child: Icon(_playing ? Icons.pause : Icons.play_arrow),
+            ),
       appBar: AppBar(
         backgroundColor: palette.background,
         foregroundColor: palette.onBackground,
@@ -144,6 +217,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 bionic: prefs.bionicEnabled,
                 initialOffset: entry?.readingCharOffset ?? 0,
                 controller: _pageCtrl,
+                highlightSentenceStart: hi?.start ?? -1,
+                highlightSentenceEnd: hi?.end ?? -1,
+                highlightParagraphStart: hi?.paragraphStart ?? -1,
+                highlightParagraphEnd: hi?.paragraphEnd ?? -1,
+                sentenceColor:
+                    hi != null ? palette.accent.withValues(alpha: 0.22) : null,
+                paragraphColor:
+                    hi != null ? palette.accent.withValues(alpha: 0.08) : null,
               ),
             ),
             _PageBar(controller: _pageCtrl, palette: palette),

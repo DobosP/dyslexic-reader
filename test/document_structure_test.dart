@@ -31,4 +31,21 @@ void main() {
     expect(stats.words, 13); // incl. heading words
     expect(stats.readingMinutes, greaterThanOrEqualTo(1));
   });
+
+  test('sentenceRefs lists headings + body sentences with paragraph ranges', () {
+    final refs = DocumentStructure.sentenceRefs(doc);
+    expect(refs.length, 5); // h1 + 2 + h2 + 1
+    expect(refs.first.wordCount, 2); // "Chapter One"
+    final s = refs[1];
+    expect(s.paragraphStart <= s.start, true);
+    expect(s.paragraphEnd >= s.end, true);
+  });
+
+  test('sentenceIndexAtOffset finds the sentence at an offset', () {
+    final refs = DocumentStructure.sentenceRefs(doc);
+    expect(DocumentStructure.sentenceIndexAtOffset(refs, 0), 0);
+    final gamma = doc.text.indexOf('Gamma');
+    final idx = DocumentStructure.sentenceIndexAtOffset(refs, gamma);
+    expect(refs[idx].start <= gamma, true);
+  });
 }

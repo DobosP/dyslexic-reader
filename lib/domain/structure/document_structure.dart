@@ -29,6 +29,24 @@ class ReadingStats {
   final int readingMinutes;
 }
 
+/// A sentence (or heading) as a character range, with its paragraph range and
+/// word count — used by the read-along highlighter/pacer.
+class SentenceRef {
+  const SentenceRef({
+    required this.start,
+    required this.end,
+    required this.paragraphStart,
+    required this.paragraphEnd,
+    required this.wordCount,
+  });
+
+  final int start;
+  final int end;
+  final int paragraphStart;
+  final int paragraphEnd;
+  final int wordCount;
+}
+
 class DocumentStructure {
   DocumentStructure._();
 
@@ -74,5 +92,46 @@ class DocumentStructure {
       avgWordsPerSentence: avg,
       readingMinutes: minutes,
     );
+  }
+
+  /// Flat list of sentences (headings count as one unit each) for read-along.
+  static List<SentenceRef> sentenceRefs(ReadingDocument doc) {
+    final refs = <SentenceRef>[];
+    for (final p in doc.paragraphs) {
+      if (p.role != BlockRole.body) {
+        refs.add(SentenceRef(
+          start: p.start,
+          end: p.end,
+          paragraphStart: p.start,
+          paragraphEnd: p.end,
+          wordCount: p.words.length,
+        ));
+        continue;
+      }
+      for (final s in Sentences.split(p.words)) {
+        if (s.isEmpty) continue;
+        refs.add(SentenceRef(
+          start: s.first.start,
+          end: s.last.end,
+          paragraphStart: p.start,
+          paragraphEnd: p.end,
+          wordCount: s.length,
+        ));
+      }
+    }
+    return refs;
+  }
+
+  /// Index of the sentence at or before [offset] (last one starting <= offset).
+  static int sentenceIndexAtOffset(List<SentenceRef> refs, int offset) {
+    var result = 0;
+    for (var i = 0; i < refs.length; i++) {
+      if (refs[i].start <= offset) {
+        result = i;
+      } else {
+        break;
+      }
+    }
+    return result;
   }
 }

@@ -50,6 +50,7 @@ class ReadingPrefs {
     this.maxLineChars = 66,
     this.bionicEnabled = false,
     this.sentencePacing = false,
+    this.readingWpm = 180,
   });
 
   final ReadingFontFamily fontFamily;
@@ -81,6 +82,9 @@ class ReadingPrefs {
   /// When on, each sentence is shown as its own spaced block (pacing aid).
   final bool sentencePacing;
 
+  /// Read-along pace in words per minute (for the smart highlighter).
+  final double readingWpm;
+
   // --- Derived values used by the renderer ---
   double get letterSpacingPx => letterSpacingEm * fontSizeSp;
   double get wordSpacingPx => wordSpacingEm * fontSizeSp;
@@ -101,6 +105,7 @@ class ReadingPrefs {
     double? maxLineChars,
     bool? bionicEnabled,
     bool? sentencePacing,
+    double? readingWpm,
   }) {
     return ReadingPrefs(
       fontFamily: fontFamily ?? this.fontFamily,
@@ -113,6 +118,7 @@ class ReadingPrefs {
       maxLineChars: maxLineChars ?? this.maxLineChars,
       bionicEnabled: bionicEnabled ?? this.bionicEnabled,
       sentencePacing: sentencePacing ?? this.sentencePacing,
+      readingWpm: readingWpm ?? this.readingWpm,
     );
   }
 
@@ -127,6 +133,7 @@ class ReadingPrefs {
         'maxLineChars': maxLineChars,
         'bionicEnabled': bionicEnabled,
         'sentencePacing': sentencePacing,
+        'readingWpm': readingWpm,
       };
 
   factory ReadingPrefs.fromJson(Map<String, dynamic> j) {
@@ -142,6 +149,7 @@ class ReadingPrefs {
       maxLineChars: _toDouble(j['maxLineChars'], d.maxLineChars),
       bionicEnabled: j['bionicEnabled'] as bool? ?? d.bionicEnabled,
       sentencePacing: j['sentencePacing'] as bool? ?? d.sentencePacing,
+      readingWpm: _toDouble(j['readingWpm'], d.readingWpm),
     );
   }
 
