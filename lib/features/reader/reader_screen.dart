@@ -40,6 +40,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   // Read-along pacer state.
   int _currentSentence = -1;
   bool _playing = false;
+  bool _helperOn = false;
   Timer? _timer;
 
   ReadingDocument _resolveDoc(bool pacing) {
@@ -94,6 +95,31 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     setState(() => _playing = false);
   }
 
+  // --- Reading guide (scroll-linked highlight) ---
+
+  void _toggleHelper() {
+    setState(() {
+      _helperOn = !_helperOn;
+      if (_helperOn) {
+        final sentences = _sentences ?? const <SentenceRef>[];
+        if (sentences.isNotEmpty && _currentSentence < 0) {
+          _currentSentence = DocumentStructure.sentenceIndexAtOffset(
+              sentences, _pageCtrl.currentOffset);
+        }
+      } else if (!_playing) {
+        _currentSentence = -1;
+      }
+    });
+  }
+
+  void _onReadingLine(int offset) {
+    if (_playing || !_helperOn) return;
+    final sentences = _sentences ?? const <SentenceRef>[];
+    if (sentences.isEmpty) return;
+    final idx = DocumentStructure.sentenceIndexAtOffset(sentences, offset);
+    if (idx != _currentSentence) setState(() => _currentSentence = idx);
+  }
+
   void _tick() {
     if (!_playing) return;
     final sentences = _sentences ?? const <SentenceRef>[];
@@ -134,9 +160,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       color: palette.onBackground,
     );
 
-    final hi = (_currentSentence >= 0 && _currentSentence < sentences.length)
-        ? sentences[_currentSentence]
-        : null;
+    final showHighlight = _currentSentence >= 0 &&
+        _currentSentence < sentences.length &&
+        (_playing || _helperOn);
+    final hi = showHighlight ? sentences[_currentSentence] : null;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -164,6 +191,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             tooltip: 'Contents',
             icon: const Icon(Icons.toc),
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+          ),
+          IconButton(
+            tooltip: _helperOn ? 'Reading guide: on' : 'Reading guide: off',
+            icon: Icon(Icons.highlight, color: _helperOn ? palette.accent : null),
+            onPressed: _toggleHelper,
           ),
           if (entry != null)
             IconButton(
@@ -225,6 +257,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     hi != null ? palette.accent.withValues(alpha: 0.22) : null,
                 paragraphColor:
                     hi != null ? palette.accent.withValues(alpha: 0.08) : null,
+                readingHelper: _helperOn,
+                onReadingLineOffset: _onReadingLine,
               ),
             ),
             _PageBar(controller: _pageCtrl, palette: palette),

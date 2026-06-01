@@ -5,6 +5,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../../domain/models/reading_document.dart';
 import '../../../domain/reflow/paginator.dart';
+import '../../../domain/reflow/sentences.dart';
 import 'paragraph_span.dart';
 
 /// Lets the screen observe and drive the reader (page N/M, jumps).
@@ -76,6 +77,8 @@ class PaginatedReader extends StatefulWidget {
     this.highlightParagraphEnd = -1,
     this.sentenceColor,
     this.paragraphColor,
+    this.readingHelper = false,
+    this.onReadingLineOffset,
   });
 
   final ReadingDocument document;
@@ -93,6 +96,11 @@ class PaginatedReader extends StatefulWidget {
   final int highlightParagraphEnd;
   final Color? sentenceColor;
   final Color? paragraphColor;
+
+  /// When true, reports (via [onReadingLineOffset]) the character offset of the
+  /// sentence at the reading line as the user scrolls — drives the reading guide.
+  final bool readingHelper;
+  final ValueChanged<int>? onReadingLineOffset;
 
   @override
   State<PaginatedReader> createState() => _PaginatedReaderState();
@@ -114,6 +122,12 @@ class _PaginatedReaderState extends State<PaginatedReader> {
   int _targetOffset = 0;
   int _initialIndex = 0;
   int _topIndex = 0;
+
+  // Latest layout metrics (for the reading-guide sentence lookup).
+  double _vh = 0;
+  double _cw = 1;
+  TextScaler _ts = const TextScaler.linear(1);
+  DateTime _lastHelper = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -151,6 +165,64 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       _ensureComputedForPage(maxVisible + _lookahead);
       setState(() {});
     }
+
+    // Reading guide: report the sentence at the reading line (throttled).
+    if (widget.readingHelper && widget.onReadingLineOffset != null) {
+      final now = DateTime.now();
+      if (now.difference(_lastHelper).inMilliseconds >= 80) {
+        _lastHelper = now;
+        final offset = _readingLineOffset();
+        if (offset != null) widget.onReadingLineOffset!(offset);
+      }
+    }
+  }
+
+  /// Character offset of the sentence at the reading line (~⅓ down the viewport).
+  int? _readingLineOffset() {
+    const band = 0.3;
+    final positions = _itemPositions.itemPositions.value;
+    if (positions.isEmpty || _pages.isEmpty || _vh <= 0) return null;
+    ItemPosition? at;
+    for (final p in positions) {
+      if (p.itemLeadingEdge <= band && p.itemTrailingEdge > band) {
+        at = p;
+        break;
+      }
+    }
+    at ??= positions.reduce((a, b) => a.index < b.index ? a : b);
+    final pageIndex = at.index.clamp(0, _pages.length - 1);
+    final page = _pages[pageIndex];
+    if (page.paragraphs.isEmpty) return page.start;
+
+    final target = (band - at.itemLeadingEdge) * _vh; // pixels from the page top
+    var acc = _vPad;
+    for (var i = 0; i < page.paragraphs.length; i++) {
+      final para = page.paragraphs[i];
+      if (i > 0) {
+        acc += para.role == BlockRole.body
+            ? widget.paragraphSpacing
+            : widget.paragraphSpacing * 1.8;
+      }
+      final pStyle = styleForRole(para.role, widget.style);
+      final h = _measure(para.text, pStyle, _cw, _ts);
+      if (acc + h >= target) {
+        return _sentenceOffsetInParagraph(para, (target - acc).clamp(0.0, h), pStyle);
+      }
+      acc += h;
+    }
+    return page.paragraphs.last.start;
+  }
+
+  int _sentenceOffsetInParagraph(PageParagraph para, double sub, TextStyle style) {
+    final sentences = Sentences.split(para.words);
+    if (sentences.isEmpty) return para.start;
+    final sb = StringBuffer();
+    for (final s in sentences) {
+      if (sb.isNotEmpty) sb.write(' ');
+      sb.write(s.map((w) => w.text).join(' '));
+      if (_measure(sb.toString(), style, _cw, _ts) >= sub) return s.first.start;
+    }
+    return sentences.last.first.start;
   }
 
   void _jumpToOffset(int offset) {
@@ -247,6 +319,9 @@ class _PaginatedReaderState extends State<PaginatedReader> {
         final pageHeight =
             (constraints.maxHeight - 2 * _vPad).clamp(1.0, double.infinity);
         final scaler = MediaQuery.textScalerOf(context);
+        _vh = constraints.maxHeight;
+        _cw = colWidth;
+        _ts = scaler;
 
         final signature = [
           identityHashCode(widget.document),
