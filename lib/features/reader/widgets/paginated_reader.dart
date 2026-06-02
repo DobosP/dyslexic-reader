@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
@@ -8,13 +9,42 @@ import '../../../domain/reflow/paginator.dart';
 import '../../../domain/reflow/sentences.dart';
 import 'paragraph_span.dart';
 
+/// The currently-highlighted sentence/paragraph (for the read-along pacer and
+/// the scroll-linked reading guide). Driven via a [ValueListenable] so updates
+/// repaint only the visible paragraphs, not the whole reader — keeping it
+/// smooth and in sync with scrolling.
+class ReadingHighlight {
+  const ReadingHighlight({
+    this.sentenceStart = -1,
+    this.sentenceEnd = -1,
+    this.paragraphStart = -1,
+    this.paragraphEnd = -1,
+    this.sentenceColor,
+    this.paragraphColor,
+  });
+
+  final int sentenceStart;
+  final int sentenceEnd;
+  final int paragraphStart;
+  final int paragraphEnd;
+  final Color? sentenceColor;
+  final Color? paragraphColor;
+
+  static const none = ReadingHighlight();
+
+  bool get active => sentenceColor != null && sentenceEnd > sentenceStart;
+  bool paragraphContains(PageParagraph p) =>
+      paragraphColor != null &&
+      paragraphEnd > paragraphStart &&
+      p.start < paragraphEnd &&
+      p.end > paragraphStart;
+}
+
 /// Lets the screen observe and drive the reader (page N/M, jumps).
 class PageReaderController extends ChangeNotifier {
   int pageIndex = 0;
   int pageCount = 1;
   int currentOffset = 0;
-
-  /// False while pages are still being computed in the background.
   bool complete = false;
 
   void Function(int offset)? _jumpToOffset;
@@ -25,8 +55,6 @@ class PageReaderController extends ChangeNotifier {
   void goToPage(int page) => _goToPage?.call(page);
   void next() => _goToPage?.call(pageIndex + 1);
   void prev() => _goToPage?.call(pageIndex - 1);
-
-  /// Scroll the offset into view only if it isn't already (for the read-along pacer).
   void ensureVisible(int offset) => _ensureVisibleFn?.call(offset);
 
   void _bind({
@@ -58,8 +86,19 @@ class PageReaderController extends ChangeNotifier {
   }
 }
 
+/// Per-page text measurements, cached so the reading-line lookup is O(1)-ish.
+class _PageMetrics {
+  _PageMetrics(this.paragraphTop, this.paragraphHeight, this.sentenceCumHeight,
+      this.sentenceStart);
+
+  final List<double> paragraphTop;
+  final List<double> paragraphHeight;
+  final List<List<double>> sentenceCumHeight;
+  final List<List<int>> sentenceStart;
+}
+
 /// A vertically-scrolling, virtualized reader (lazy pagination + windowed
-/// render). Optionally highlights the current read-along sentence/paragraph.
+/// render), with an optional read-along/reading-guide highlight.
 class PaginatedReader extends StatefulWidget {
   const PaginatedReader({
     super.key,
@@ -71,12 +110,7 @@ class PaginatedReader extends StatefulWidget {
     required this.initialOffset,
     this.onOffsetChanged,
     this.controller,
-    this.highlightSentenceStart = -1,
-    this.highlightSentenceEnd = -1,
-    this.highlightParagraphStart = -1,
-    this.highlightParagraphEnd = -1,
-    this.sentenceColor,
-    this.paragraphColor,
+    this.highlight,
     this.readingHelper = false,
     this.onReadingLineOffset,
   });
@@ -90,15 +124,10 @@ class PaginatedReader extends StatefulWidget {
   final ValueChanged<int>? onOffsetChanged;
   final PageReaderController? controller;
 
-  final int highlightSentenceStart;
-  final int highlightSentenceEnd;
-  final int highlightParagraphStart;
-  final int highlightParagraphEnd;
-  final Color? sentenceColor;
-  final Color? paragraphColor;
+  /// Current highlight (repaints only affected paragraphs when it changes).
+  final ValueListenable<ReadingHighlight>? highlight;
 
-  /// When true, reports (via [onReadingLineOffset]) the character offset of the
-  /// sentence at the reading line as the user scrolls — drives the reading guide.
+  /// When true, reports the sentence at the reading line as the user scrolls.
   final bool readingHelper;
   final ValueChanged<int>? onReadingLineOffset;
 
@@ -116,6 +145,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
 
   LazyPaginator? _paginator;
   List<ReaderPage> _pages = [];
+  final Map<int, _PageMetrics> _metricsCache = {};
   bool _complete = false;
   int _generation = 0;
   String _signature = '';
@@ -123,11 +153,9 @@ class _PaginatedReaderState extends State<PaginatedReader> {
   int _initialIndex = 0;
   int _topIndex = 0;
 
-  // Latest layout metrics (for the reading-guide sentence lookup).
   double _vh = 0;
   double _cw = 1;
   TextScaler _ts = const TextScaler.linear(1);
-  DateTime _lastHelper = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -166,22 +194,17 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       setState(() {});
     }
 
-    // Reading guide: report the sentence at the reading line (throttled).
+    // Reading guide: report the sentence at the reading line every frame
+    // (cheap thanks to cached page metrics) so it stays in sync with scroll.
     if (widget.readingHelper && widget.onReadingLineOffset != null) {
-      final now = DateTime.now();
-      if (now.difference(_lastHelper).inMilliseconds >= 80) {
-        _lastHelper = now;
-        final offset = _readingLineOffset();
-        if (offset != null) widget.onReadingLineOffset!(offset);
-      }
+      final offset = _readingLineOffset(positions);
+      if (offset != null) widget.onReadingLineOffset!(offset);
     }
   }
 
-  /// Character offset of the sentence at the reading line (~⅓ down the viewport).
-  int? _readingLineOffset() {
+  int? _readingLineOffset(Iterable<ItemPosition> positions) {
     const band = 0.3;
-    final positions = _itemPositions.itemPositions.value;
-    if (positions.isEmpty || _pages.isEmpty || _vh <= 0) return null;
+    if (_vh <= 0) return null;
     ItemPosition? at;
     for (final p in positions) {
       if (p.itemLeadingEdge <= band && p.itemTrailingEdge > band) {
@@ -194,35 +217,61 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     final page = _pages[pageIndex];
     if (page.paragraphs.isEmpty) return page.start;
 
-    final target = (band - at.itemLeadingEdge) * _vh; // pixels from the page top
-    var acc = _vPad;
-    for (var i = 0; i < page.paragraphs.length; i++) {
-      final para = page.paragraphs[i];
-      if (i > 0) {
-        acc += para.role == BlockRole.body
-            ? widget.paragraphSpacing
-            : widget.paragraphSpacing * 1.8;
+    final m = _metricsFor(pageIndex, page);
+    final target = (band - at.itemLeadingEdge) * _vh;
+
+    var pi = 0;
+    for (var i = 0; i < m.paragraphTop.length; i++) {
+      if (m.paragraphTop[i] <= target) {
+        pi = i;
+      } else {
+        break;
       }
-      final pStyle = styleForRole(para.role, widget.style);
-      final h = _measure(para.text, pStyle, _cw, _ts);
-      if (acc + h >= target) {
-        return _sentenceOffsetInParagraph(para, (target - acc).clamp(0.0, h), pStyle);
-      }
-      acc += h;
     }
-    return page.paragraphs.last.start;
+    final sub = target - m.paragraphTop[pi];
+    final cum = m.sentenceCumHeight[pi];
+    final starts = m.sentenceStart[pi];
+    for (var k = 0; k < cum.length; k++) {
+      if (cum[k] >= sub) return starts[k];
+    }
+    return starts.isNotEmpty ? starts.last : page.paragraphs[pi].start;
   }
 
-  int _sentenceOffsetInParagraph(PageParagraph para, double sub, TextStyle style) {
-    final sentences = Sentences.split(para.words);
-    if (sentences.isEmpty) return para.start;
-    final sb = StringBuffer();
-    for (final s in sentences) {
-      if (sb.isNotEmpty) sb.write(' ');
-      sb.write(s.map((w) => w.text).join(' '));
-      if (_measure(sb.toString(), style, _cw, _ts) >= sub) return s.first.start;
-    }
-    return sentences.last.first.start;
+  _PageMetrics _metricsFor(int pageIndex, ReaderPage page) {
+    return _metricsCache.putIfAbsent(pageIndex, () {
+      final tops = <double>[];
+      final heights = <double>[];
+      final cum = <List<double>>[];
+      final starts = <List<int>>[];
+      var acc = _vPad;
+      for (var i = 0; i < page.paragraphs.length; i++) {
+        final para = page.paragraphs[i];
+        if (i > 0) {
+          acc += para.role == BlockRole.body
+              ? widget.paragraphSpacing
+              : widget.paragraphSpacing * 1.8;
+        }
+        final pStyle = styleForRole(para.role, widget.style);
+        final h = _measure(para.text, pStyle, _cw, _ts);
+        tops.add(acc);
+        heights.add(h);
+
+        final sentences = Sentences.split(para.words);
+        final ch = <double>[];
+        final st = <int>[];
+        final sb = StringBuffer();
+        for (final s in sentences) {
+          if (sb.isNotEmpty) sb.write(' ');
+          sb.write(s.map((w) => w.text).join(' '));
+          ch.add(_measure(sb.toString(), pStyle, _cw, _ts));
+          st.add(s.first.start);
+        }
+        cum.add(ch);
+        starts.add(st);
+        acc += h;
+      }
+      return _PageMetrics(tops, heights, cum, starts);
+    });
   }
 
   void _jumpToOffset(int offset) {
@@ -231,7 +280,6 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     _animateToPage(Paginator.pageForOffset(_pages, offset));
   }
 
-  /// Scroll [offset] into view only if its page isn't already visible.
   void _ensureVisible(int offset) {
     _ensureComputedForOffset(offset);
     final page = Paginator.pageForOffset(_pages, offset);
@@ -339,6 +387,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
         if (signature != _signature) {
           _signature = signature;
           _generation++;
+          _metricsCache.clear();
           final gen = _generation;
           _paginator = LazyPaginator(
             doc: widget.document,
@@ -382,12 +431,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
             bionic: widget.bionic,
             horizontalPadding: _hPad,
             verticalPadding: _vPad,
-            highlightSentenceStart: widget.highlightSentenceStart,
-            highlightSentenceEnd: widget.highlightSentenceEnd,
-            highlightParagraphStart: widget.highlightParagraphStart,
-            highlightParagraphEnd: widget.highlightParagraphEnd,
-            sentenceColor: widget.sentenceColor,
-            paragraphColor: widget.paragraphColor,
+            highlight: widget.highlight,
           ),
         );
       },
@@ -416,12 +460,7 @@ class _PageBody extends StatelessWidget {
     required this.bionic,
     required this.horizontalPadding,
     required this.verticalPadding,
-    required this.highlightSentenceStart,
-    required this.highlightSentenceEnd,
-    required this.highlightParagraphStart,
-    required this.highlightParagraphEnd,
-    required this.sentenceColor,
-    required this.paragraphColor,
+    required this.highlight,
   });
 
   final ReaderPage page;
@@ -431,18 +470,7 @@ class _PageBody extends StatelessWidget {
   final bool bionic;
   final double horizontalPadding;
   final double verticalPadding;
-  final int highlightSentenceStart;
-  final int highlightSentenceEnd;
-  final int highlightParagraphStart;
-  final int highlightParagraphEnd;
-  final Color? sentenceColor;
-  final Color? paragraphColor;
-
-  bool _paraHighlighted(PageParagraph p) =>
-      paragraphColor != null &&
-      highlightParagraphEnd > highlightParagraphStart &&
-      p.start < highlightParagraphEnd &&
-      p.end > highlightParagraphStart;
+  final ValueListenable<ReadingHighlight>? highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -476,23 +504,32 @@ class _PageBody extends StatelessWidget {
   }
 
   Widget _paragraph(PageParagraph p) {
+    final listenable = highlight;
+    if (listenable == null) return _styled(p, ReadingHighlight.none);
+    return ValueListenableBuilder<ReadingHighlight>(
+      valueListenable: listenable,
+      builder: (_, h, _) => _styled(p, h),
+    );
+  }
+
+  Widget _styled(PageParagraph p, ReadingHighlight h) {
     final text = Text.rich(
       buildParagraphSpan(
         p.words,
         styleForRole(p.role, style),
         bionic: bionic && p.role == BlockRole.body,
-        highlightStart: highlightSentenceStart,
-        highlightEnd: highlightSentenceEnd,
-        highlightColor: sentenceColor,
+        highlightStart: h.sentenceStart,
+        highlightEnd: h.sentenceEnd,
+        highlightColor: h.sentenceColor,
       ),
       textAlign: TextAlign.start,
     );
-    if (!_paraHighlighted(p)) return text;
+    if (!h.paragraphContains(p)) return text;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       decoration: BoxDecoration(
-        color: paragraphColor,
+        color: h.paragraphColor,
         borderRadius: BorderRadius.circular(6),
       ),
       child: text,

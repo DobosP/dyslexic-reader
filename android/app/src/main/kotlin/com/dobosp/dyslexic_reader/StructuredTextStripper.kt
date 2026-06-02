@@ -3,7 +3,6 @@ package com.dobosp.dyslexic_reader
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** A line of text with geometry, collected while stripping. */
@@ -12,22 +11,20 @@ private data class LineInfo(
     val text: String,
     val top: Float,
     val leftX: Float,
-    val rightX: Float,
     val size: Float,
-    val boldFraction: Float,
 )
 
 /**
- * Reconstructs document structure (headings vs paragraphs) from per-glyph
- * geometry + font sizes instead of returning flat text. Emits a list of
- * {"type": "h1"|"h2"|"h3"|"p", "text": ...} blocks. On-device, Apache-2.0.
+ * Reconstructs document structure from per-glyph geometry + font sizes instead
+ * of returning flat text. Emits {"type": "h1"|"h2"|"h3"|"p", "text": ...} blocks.
  *
- * Run [PDFTextStripper.getText] (for its side effects) then call [buildBlocks].
+ * Heading detection is intentionally CONSERVATIVE: only clearly-larger, short
+ * lines (real chapter/section titles) become headings, so body text is never
+ * promoted/bolded. Run [PDFTextStripper.getText] then call [buildBlocks].
  */
 class StructuredTextStripper : PDFTextStripper() {
     private val lines = mutableListOf<LineInfo>()
     private val pageHeights = mutableMapOf<Int, Float>()
-    private val pageWidths = mutableMapOf<Int, Float>()
 
     init {
         sortByPosition = true
@@ -35,7 +32,6 @@ class StructuredTextStripper : PDFTextStripper() {
 
     override fun startPage(page: PDPage) {
         pageHeights[currentPageNo] = page.mediaBox.height
-        pageWidths[currentPageNo] = page.mediaBox.width
         super.startPage(page)
     }
 
@@ -45,44 +41,23 @@ class StructuredTextStripper : PDFTextStripper() {
         if (trimmed.isEmpty()) return
 
         val sizeCounts = HashMap<Int, Int>()
-        var boldCount = 0
         var top = Float.MAX_VALUE
         for (tp in textPositions) {
             val s = tp.fontSizeInPt.roundToInt()
             sizeCounts[s] = (sizeCounts[s] ?: 0) + 1
-            if (isBold(tp)) boldCount++
             if (tp.yDirAdj < top) top = tp.yDirAdj
         }
         val size = sizeCounts.maxByOrNull { it.value }?.key?.toFloat()
             ?: textPositions[0].fontSizeInPt
-        val first = textPositions.first()
-        val last = textPositions.last()
         lines.add(
             LineInfo(
                 page = currentPageNo,
                 text = trimmed,
                 top = top,
-                leftX = first.xDirAdj,
-                rightX = last.xDirAdj + last.widthDirAdj,
+                leftX = textPositions.first().xDirAdj,
                 size = size,
-                boldFraction = boldCount.toFloat() / textPositions.size,
             )
         )
-    }
-
-    private fun isBold(tp: TextPosition): Boolean {
-        val name = tp.font?.name?.lowercase() ?: ""
-        if (name.contains("bold") || name.contains("black") ||
-            name.contains("heavy") || name.contains("semibold")
-        ) {
-            return true
-        }
-        val weight = try {
-            tp.font?.fontDescriptor?.fontWeight ?: 0f
-        } catch (e: Exception) {
-            0f
-        }
-        return weight >= 600f
     }
 
     /** Run the structure heuristics and return typed blocks. */
@@ -134,55 +109,25 @@ class StructuredTextStripper : PDFTextStripper() {
         return blocks
     }
 
+    /**
+     * Conservative: a line is a heading only if it is clearly LARGER than body
+     * text AND short. Body text is uniform size, so it stays "p" (never bolded).
+     */
     private fun classify(line: LineInfo, bodySize: Float): String {
         val ratio = if (bodySize > 0f) line.size / bodySize else 1f
-        if (ratio >= 1.7f) return "h1"
-        if (ratio >= 1.35f) return "h2"
-        if (ratio >= 1.15f) return "h3"
-
-        // Same-size heading signals — only for short lines that don't read like
-        // a sentence (so we don't promote ordinary body lines).
-        val text = line.text.trim()
-        val wordCount = text.split(Regex("\\s+")).size
-        val sentenceLike = text.endsWith(".") || text.endsWith(",") || text.endsWith(";")
-        if (wordCount in 1..12 && !sentenceLike) {
-            if (isNumberedHeading(text)) return "h2"
-            if (isMostlyUpper(text)) return "h2"
-            if (line.boldFraction >= 0.6f) return "h3"
-            val pw = pageWidths[line.page] ?: 0f
-            if (pw > 0f && isCentered(line, pw)) return "h3"
+        val wordCount = line.text.split(Regex("\\s+")).size
+        if (wordCount <= 14) {
+            if (ratio >= 1.7f) return "h1"
+            if (ratio >= 1.4f) return "h2"
+            if (ratio >= 1.2f) return "h3"
         }
         return "p"
-    }
-
-    private fun isNumberedHeading(text: String): Boolean {
-        val lower = text.lowercase()
-        if (Regex("^(chapter|section|part|book|prologue|epilogue|appendix)\\b")
-                .containsMatchIn(lower)
-        ) {
-            return true
-        }
-        return Regex("^\\d+([.)]\\d+)*[.)]?\\s+\\S").containsMatchIn(text)
-    }
-
-    private fun isMostlyUpper(text: String): Boolean {
-        val letters = text.filter { it.isLetter() }
-        if (letters.length < 2) return false
-        val upper = letters.count { it.isUpperCase() }
-        return upper.toFloat() / letters.length >= 0.7f
-    }
-
-    private fun isCentered(line: LineInfo, pageWidth: Float): Boolean {
-        val left = line.leftX
-        val right = pageWidth - line.rightX
-        if (left <= pageWidth * 0.12f || right <= pageWidth * 0.12f) return false
-        return abs(left - right) < pageWidth * 0.12f
     }
 
     private fun isParagraphBreak(prev: LineInfo, line: LineInfo, medianAdvance: Float): Boolean {
         if (line.page != prev.page) return false // let paragraphs flow across pages
         val gap = line.top - prev.top
-        if (medianAdvance > 0f && gap > 1.6f * medianAdvance) return true
+        if (medianAdvance > 0f && gap > 1.8f * medianAdvance) return true
         if (line.leftX - prev.leftX > 2f * avgSpace(line)) return true // first-line indent
         return false
     }

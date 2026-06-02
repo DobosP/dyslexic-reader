@@ -29,7 +29,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final PageReaderController _pageCtrl = PageReaderController();
 
-  // Memoized derived data (stable identity across unrelated rebuilds).
+  // Highlight is driven via a notifier so updates repaint only the visible
+  // paragraphs (smooth, in sync with scrolling).
+  final ValueNotifier<ReadingHighlight> _highlight =
+      ValueNotifier(ReadingHighlight.none);
+
   ReadingDocument? _effectiveDoc;
   bool? _lastPacing;
   List<OutlineItem>? _outline;
@@ -37,7 +41,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   List<SentenceRef>? _sentences;
   ReadingDocument? _sentencesDoc;
 
-  // Read-along pacer state.
   int _currentSentence = -1;
   bool _playing = false;
   bool _helperOn = false;
@@ -63,6 +66,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _highlight.dispose();
     final entry = widget.entry;
     if (entry != null) {
       ref
@@ -73,7 +77,26 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     super.dispose();
   }
 
-  // --- Read-along pacer ---
+  /// Push the current sentence into the highlight notifier (or clear it).
+  void _applyHighlight() {
+    final sentences = _sentences ?? const <SentenceRef>[];
+    if (_currentSentence < 0 || _currentSentence >= sentences.length) {
+      _highlight.value = ReadingHighlight.none;
+      return;
+    }
+    final s = sentences[_currentSentence];
+    final accent = paletteFor(ref.read(readingPrefsProvider).themeId).accent;
+    _highlight.value = ReadingHighlight(
+      sentenceStart: s.start,
+      sentenceEnd: s.end,
+      paragraphStart: s.paragraphStart,
+      paragraphEnd: s.paragraphEnd,
+      sentenceColor: accent.withValues(alpha: 0.22),
+      paragraphColor: accent.withValues(alpha: 0.08),
+    );
+  }
+
+  // --- Read-along pacer (auto-advance) ---
 
   void _togglePlay() => _playing ? _pause() : _play();
 
@@ -87,12 +110,36 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             DocumentStructure.sentenceIndexAtOffset(sentences, _pageCtrl.currentOffset);
       }
     });
+    _applyHighlight();
     _tick();
   }
 
   void _pause() {
     _timer?.cancel();
     setState(() => _playing = false);
+  }
+
+  void _tick() {
+    if (!_playing) return;
+    final sentences = _sentences ?? const <SentenceRef>[];
+    if (_currentSentence < 0 || _currentSentence >= sentences.length) {
+      _pause();
+      return;
+    }
+    final ref0 = sentences[_currentSentence];
+    _pageCtrl.ensureVisible(ref0.start);
+    _applyHighlight();
+    final wpm = ref.read(readingPrefsProvider).readingWpm.clamp(40.0, 600.0);
+    final seconds = (ref0.wordCount / wpm * 60).clamp(0.6, 8.0);
+    _timer = Timer(Duration(milliseconds: (seconds * 1000).round()), () {
+      if (!mounted || !_playing) return;
+      if (_currentSentence + 1 >= sentences.length) {
+        _pause();
+        return;
+      }
+      _currentSentence++;
+      _tick();
+    });
   }
 
   // --- Reading guide (scroll-linked highlight) ---
@@ -110,6 +157,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         _currentSentence = -1;
       }
     });
+    _applyHighlight();
   }
 
   void _onReadingLine(int offset) {
@@ -117,29 +165,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final sentences = _sentences ?? const <SentenceRef>[];
     if (sentences.isEmpty) return;
     final idx = DocumentStructure.sentenceIndexAtOffset(sentences, offset);
-    if (idx != _currentSentence) setState(() => _currentSentence = idx);
-  }
-
-  void _tick() {
-    if (!_playing) return;
-    final sentences = _sentences ?? const <SentenceRef>[];
-    if (_currentSentence < 0 || _currentSentence >= sentences.length) {
-      _pause();
-      return;
+    if (idx != _currentSentence) {
+      _currentSentence = idx;
+      _applyHighlight();
     }
-    final ref0 = sentences[_currentSentence];
-    _pageCtrl.ensureVisible(ref0.start);
-    final wpm = ref.read(readingPrefsProvider).readingWpm.clamp(40.0, 600.0);
-    final seconds = (ref0.wordCount / wpm * 60).clamp(0.6, 8.0);
-    _timer = Timer(Duration(milliseconds: (seconds * 1000).round()), () {
-      if (!mounted || !_playing) return;
-      if (_currentSentence + 1 >= sentences.length) {
-        _pause(); // reached the end
-        return;
-      }
-      setState(() => _currentSentence++);
-      _tick();
-    });
   }
 
   @override
@@ -159,11 +188,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       wordSpacing: prefs.wordSpacingPx,
       color: palette.onBackground,
     );
-
-    final showHighlight = _currentSentence >= 0 &&
-        _currentSentence < sentences.length &&
-        (_playing || _helperOn);
-    final hi = showHighlight ? sentences[_currentSentence] : null;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -249,14 +273,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 bionic: prefs.bionicEnabled,
                 initialOffset: entry?.readingCharOffset ?? 0,
                 controller: _pageCtrl,
-                highlightSentenceStart: hi?.start ?? -1,
-                highlightSentenceEnd: hi?.end ?? -1,
-                highlightParagraphStart: hi?.paragraphStart ?? -1,
-                highlightParagraphEnd: hi?.paragraphEnd ?? -1,
-                sentenceColor:
-                    hi != null ? palette.accent.withValues(alpha: 0.22) : null,
-                paragraphColor:
-                    hi != null ? palette.accent.withValues(alpha: 0.08) : null,
+                highlight: _highlight,
                 readingHelper: _helperOn,
                 onReadingLineOffset: _onReadingLine,
               ),
