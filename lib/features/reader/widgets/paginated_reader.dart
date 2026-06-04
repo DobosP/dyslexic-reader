@@ -107,6 +107,9 @@ class PaginatedReader extends StatefulWidget {
     this.readingHelper = false,
     this.onReadingChunk,
     this.highlightMaxRows = 2,
+    this.noteRanges = const [],
+    this.onTextTap,
+    this.noteColor,
   });
 
   final ReadingDocument document;
@@ -125,6 +128,13 @@ class PaginatedReader extends StatefulWidget {
 
   /// How many rendered rows a highlight chunk spans at most (1, 2, or 3).
   final int highlightMaxRows;
+
+  /// Character ranges the user has annotated (dotted-underlined in the text).
+  final List<(int, int)> noteRanges;
+
+  /// Called when the user long-presses text, with the sentence range hit.
+  final void Function(int start, int end)? onTextTap;
+  final Color? noteColor;
 
   @override
   State<PaginatedReader> createState() => _PaginatedReaderState();
@@ -498,6 +508,9 @@ class _PaginatedReaderState extends State<PaginatedReader> {
             horizontalPadding: _hPad,
             verticalPadding: _vPad,
             highlight: widget.highlight,
+            noteRanges: widget.noteRanges,
+            noteColor: widget.noteColor,
+            onTextTap: widget.onTextTap,
           ),
         );
       },
@@ -527,6 +540,9 @@ class _PageBody extends StatelessWidget {
     required this.horizontalPadding,
     required this.verticalPadding,
     required this.highlight,
+    required this.noteRanges,
+    required this.noteColor,
+    required this.onTextTap,
   });
 
   final ReaderPage page;
@@ -537,6 +553,9 @@ class _PageBody extends StatelessWidget {
   final double horizontalPadding;
   final double verticalPadding;
   final ValueListenable<ReadingHighlight>? highlight;
+  final List<(int, int)> noteRanges;
+  final Color? noteColor;
+  final void Function(int start, int end)? onTextTap;
 
   @override
   Widget build(BuildContext context) {
@@ -560,12 +579,23 @@ class _PageBody extends StatelessWidget {
                         ? paragraphSpacing
                         : paragraphSpacing * 1.8,
                   ),
-                _paragraph(page.paragraphs[i]),
+                _wrap(context, page.paragraphs[i]),
               ],
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _wrap(BuildContext context, PageParagraph p) {
+    final body = _paragraph(p);
+    final cb = onTextTap;
+    if (cb == null) return body;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: (d) => _handleLongPress(context, p, d.localPosition),
+      child: body,
     );
   }
 
@@ -579,6 +609,9 @@ class _PageBody extends StatelessWidget {
   }
 
   Widget _styled(PageParagraph p, ReadingHighlight h) {
+    final ranges = noteRanges.isEmpty
+        ? const <(int, int)>[]
+        : [for (final r in noteRanges) if (p.start < r.$2 && p.end > r.$1) r];
     return Text.rich(
       buildParagraphSpan(
         p.words,
@@ -587,9 +620,55 @@ class _PageBody extends StatelessWidget {
         highlightStart: h.sentenceStart,
         highlightEnd: h.sentenceEnd,
         highlightColor: h.sentenceColor,
+        noteRanges: ranges,
+        noteColor: noteColor,
       ),
       textAlign: TextAlign.start,
     );
+  }
+
+  /// Map a long-press location to the sentence under it and report its range.
+  void _handleLongPress(BuildContext context, PageParagraph p, Offset localPos) {
+    final cb = onTextTap;
+    if (cb == null || p.words.isEmpty) return;
+    final painter = TextPainter(
+      text: buildParagraphSpan(
+        p.words,
+        styleForRole(p.role, style),
+        bionic: bionic && p.role == BlockRole.body,
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: columnWidth);
+    final index = painter.getPositionForOffset(localPos).offset;
+    painter.dispose();
+    final range = _sentenceRangeAt(p, index);
+    if (range != null) cb(range.$1, range.$2);
+  }
+
+  /// The character range of the sentence containing rendered-string [index]
+  /// (words are joined by single spaces in the rendered text).
+  (int, int)? _sentenceRangeAt(PageParagraph p, int index) {
+    final words = p.words;
+    if (words.isEmpty) return null;
+    var cursor = 0;
+    var wordIdx = words.length - 1;
+    for (var i = 0; i < words.length; i++) {
+      final wlen = words[i].text.length;
+      if (index <= cursor + wlen) {
+        wordIdx = i;
+        break;
+      }
+      cursor += wlen + 1; // word + separator space
+    }
+    final target = words[wordIdx];
+    for (final sentence in Sentences.split(words)) {
+      if (sentence.isEmpty) continue;
+      if (target.start >= sentence.first.start && target.end <= sentence.last.end) {
+        return (sentence.first.start, sentence.last.end);
+      }
+    }
+    return (target.start, target.end);
   }
 }
 

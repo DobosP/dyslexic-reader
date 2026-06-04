@@ -56,6 +56,19 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     return _effectiveDoc!;
   }
 
+  /// The freshest copy of this document's library entry (so newly-added notes
+  /// appear immediately), falling back to the one passed in.
+  LibraryEntry? _liveEntry(List<LibraryEntry>? list) {
+    final base = widget.entry;
+    if (base == null) return null;
+    if (list != null) {
+      for (final e in list) {
+        if (e.id == base.id) return e;
+      }
+    }
+    return base;
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -147,7 +160,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   Widget build(BuildContext context) {
     final prefs = ref.watch(readingPrefsProvider);
     final palette = paletteFor(prefs.themeId);
-    final entry = widget.entry;
+    final entry = _liveEntry(ref.watch(libraryControllerProvider).valueOrNull);
+    final notes = entry?.notes ?? const <Note>[];
     final canViewOriginal = entry?.pdfPath != null && entry!.pageCount > 0;
     final doc = _resolveDoc(prefs.sentencePacing);
 
@@ -204,6 +218,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               icon: const Icon(Icons.bookmarks_outlined),
               onPressed: () => _showBookmarks(entry.id),
             ),
+          if (entry != null)
+            IconButton(
+              tooltip: 'Notes',
+              icon: const Icon(Icons.sticky_note_2_outlined),
+              onPressed: () => _showNotes(entry.id),
+            ),
           if (canViewOriginal)
             IconButton(
               tooltip: 'Original pages',
@@ -248,6 +268,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 readingHelper: _helperOn,
                 onReadingChunk: _onReadingChunk,
                 highlightMaxRows: prefs.highlightMaxRows,
+                noteRanges: [for (final n in notes) (n.start, n.end)],
+                noteColor: palette.accent,
+                onTextTap: entry == null ? null : _onTextTap,
               ),
             ),
             _PageBar(controller: _pageCtrl, palette: palette),
@@ -311,6 +334,155 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     _pageCtrl.jumpToOffset(b.offset);
+                  },
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // --- Notes (long-press a sentence to annotate it) ---
+
+  void _onTextTap(int start, int end) {
+    final entry = widget.entry;
+    if (entry == null) return;
+    final live = _liveEntry(ref.read(libraryControllerProvider).valueOrNull) ?? entry;
+    Note? existing;
+    for (final n in live.notes) {
+      if (n.start == start && n.end == end) {
+        existing = n;
+        break;
+      }
+    }
+    _openNoteSheet(entry.id, start, end, existing);
+  }
+
+  void _openNoteSheet(String id, int start, int end, Note? existing) {
+    final controller = TextEditingController(text: existing?.text ?? '');
+    final palette = paletteFor(ref.read(readingPrefsProvider).themeId);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Note', style: Theme.of(sheetCtx).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              _snippet(start),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontStyle: FontStyle.italic,
+                color: palette.onBackground.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 5,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'Write a note for this sentence…',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (existing != null)
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.of(sheetCtx).pop();
+                      ref
+                          .read(libraryControllerProvider.notifier)
+                          .removeNote(id, existing);
+                    },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Delete'),
+                  ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: () {
+                    final text = controller.text.trim();
+                    Navigator.of(sheetCtx).pop();
+                    final notifier =
+                        ref.read(libraryControllerProvider.notifier);
+                    if (text.isEmpty) {
+                      if (existing != null) notifier.removeNote(id, existing);
+                      return;
+                    }
+                    notifier.upsertNote(
+                      id,
+                      Note(
+                        start: start,
+                        end: end,
+                        text: text,
+                        createdAt: DateTime.now(),
+                      ),
+                    );
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(controller.dispose);
+  }
+
+  void _showNotes(String id) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => Consumer(
+        builder: (context, ref, _) {
+          final list = ref.watch(libraryControllerProvider).valueOrNull ?? const [];
+          LibraryEntry? entry;
+          for (final e in list) {
+            if (e.id == id) entry = e;
+          }
+          final notes = entry?.notes ?? const <Note>[];
+          if (notes.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No notes yet. Long-press a sentence to add one.'),
+            );
+          }
+          return ListView(
+            shrinkWrap: true,
+            children: [
+              for (final n in notes)
+                ListTile(
+                  leading: const Icon(Icons.sticky_note_2_outlined),
+                  title: Text(n.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                    '"${_snippet(n.start)}"',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => ref
+                        .read(libraryControllerProvider.notifier)
+                        .removeNote(id, n),
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _pageCtrl.jumpToOffset(n.start);
                   },
                 ),
             ],

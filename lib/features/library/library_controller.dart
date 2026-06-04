@@ -258,6 +258,50 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     state = AsyncData(next);
   }
 
+  /// Add a note, or replace an existing note on the same character range.
+  Future<void> upsertNote(String id, Note note) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final entry = list[idx];
+    final notes = entry.notes
+        .where((n) => !(n.start == note.start && n.end == note.end))
+        .toList()
+      ..add(note)
+      ..sort((a, b) => a.start.compareTo(b.start));
+    final next = [...list];
+    next[idx] = entry.copyWith(notes: notes);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
+  Future<void> removeNote(String id, Note note) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final entry = list[idx];
+    final notes = entry.notes
+        .where((n) => !(n.start == note.start && n.end == note.end))
+        .toList();
+    final next = [...list];
+    next[idx] = entry.copyWith(notes: notes);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
+  Future<void> saveTtsPosition(String id, int charOffset) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final next = [...list];
+    next[idx] = list[idx].copyWith(ttsCharOffset: charOffset);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
   Future<void> delete(LibraryEntry e) async {
     for (final p in [e.cacheBlocksPath, e.pdfPath]) {
       if (p == null) continue;

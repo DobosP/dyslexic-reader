@@ -34,6 +34,36 @@ class Bookmark {
       );
 }
 
+/// A user note anchored to a character range [start, end) in the full text.
+class Note {
+  const Note({
+    required this.start,
+    required this.end,
+    required this.text,
+    required this.createdAt,
+  });
+
+  final int start;
+  final int end;
+  final String text;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'start': start,
+        'end': end,
+        'text': text,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory Note.fromJson(Map<String, dynamic> j) => Note(
+        start: (j['start'] as num?)?.toInt() ?? 0,
+        end: (j['end'] as num?)?.toInt() ?? 0,
+        text: j['text'] as String? ?? '',
+        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      );
+}
+
 /// Metadata for a document saved in the on-device library. The extracted
 /// **typed blocks** are cached as JSON at [cacheBlocksPath]; for PDFs the
 /// original file is copied to [pdfPath] for the "original pages" view.
@@ -50,7 +80,9 @@ class LibraryEntry {
     this.hasTextLayer = true,
     this.pdfPath,
     this.readingCharOffset = 0,
+    this.ttsCharOffset = 0,
     this.bookmarks = const [],
+    this.notes = const [],
   });
 
   final String id;
@@ -74,9 +106,17 @@ class LibraryEntry {
   /// Saved bookmarks for this document.
   final List<Bookmark> bookmarks;
 
+  /// Last text-to-speech position as a character offset into the full text.
+  final int ttsCharOffset;
+
+  /// User notes anchored to character ranges.
+  final List<Note> notes;
+
   LibraryEntry copyWith({
     int? readingCharOffset,
+    int? ttsCharOffset,
     List<Bookmark>? bookmarks,
+    List<Note>? notes,
   }) =>
       LibraryEntry(
         id: id,
@@ -90,7 +130,9 @@ class LibraryEntry {
         hasTextLayer: hasTextLayer,
         pdfPath: pdfPath,
         readingCharOffset: readingCharOffset ?? this.readingCharOffset,
+        ttsCharOffset: ttsCharOffset ?? this.ttsCharOffset,
         bookmarks: bookmarks ?? this.bookmarks,
+        notes: notes ?? this.notes,
       );
 
   Map<String, dynamic> toJson() => {
@@ -105,7 +147,9 @@ class LibraryEntry {
         'hasTextLayer': hasTextLayer,
         'pdfPath': pdfPath,
         'readingCharOffset': readingCharOffset,
+        'ttsCharOffset': ttsCharOffset,
         'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
+        'notes': notes.map((n) => n.toJson()).toList(),
       };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> j) => LibraryEntry(
@@ -124,9 +168,14 @@ class LibraryEntry {
         hasTextLayer: j['hasTextLayer'] as bool? ?? true,
         pdfPath: j['pdfPath'] as String?,
         readingCharOffset: (j['readingCharOffset'] as num?)?.toInt() ?? 0,
+        ttsCharOffset: (j['ttsCharOffset'] as num?)?.toInt() ?? 0,
         bookmarks: ((j['bookmarks'] as List?) ?? const [])
             .cast<Map<String, dynamic>>()
             .map(Bookmark.fromJson)
+            .toList(),
+        notes: ((j['notes'] as List?) ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(Note.fromJson)
             .toList(),
       );
 

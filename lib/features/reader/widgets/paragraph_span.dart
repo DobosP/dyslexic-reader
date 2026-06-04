@@ -4,8 +4,9 @@ import '../../../domain/models/reading_document.dart';
 import '../../../domain/reflow/bionic.dart';
 
 /// Builds the styled text span for a paragraph (or page fragment). Supports an
-/// optional [bionic] prefix-bold and an optional read-along sentence highlight
-/// over the character range [highlightStart, highlightEnd).
+/// optional [bionic] prefix-bold, a read-along highlight over the character
+/// range [highlightStart, highlightEnd), and a dotted underline over any
+/// [noteRanges] (sentences the user has annotated).
 InlineSpan buildParagraphSpan(
   List<Word> words,
   TextStyle base, {
@@ -13,25 +14,42 @@ InlineSpan buildParagraphSpan(
   int highlightStart = -1,
   int highlightEnd = -1,
   Color? highlightColor,
+  List<(int, int)> noteRanges = const [],
+  Color? noteColor,
 }) {
   final hasHighlight =
       highlightColor != null && highlightStart >= 0 && highlightEnd > highlightStart;
+  final hasNotes = noteRanges.isNotEmpty;
 
-  if (!bionic && !hasHighlight) {
+  if (!bionic && !hasHighlight && !hasNotes) {
     return TextSpan(text: words.map((w) => w.text).join(' '), style: base);
   }
 
   bool inRange(Word w) => hasHighlight && w.start < highlightEnd && w.end > highlightStart;
-  final bold = base.copyWith(fontWeight: FontWeight.w700);
-  final spans = <InlineSpan>[];
+  bool noted(Word w) =>
+      hasNotes && noteRanges.any((r) => w.start < r.$2 && w.end > r.$1);
 
+  TextStyle styleFor(Word w) {
+    var s = base;
+    if (inRange(w)) s = s.copyWith(backgroundColor: highlightColor);
+    if (noted(w)) {
+      s = s.copyWith(
+        decoration: TextDecoration.underline,
+        decorationColor: noteColor ?? base.color,
+        decorationStyle: TextDecorationStyle.dotted,
+        decorationThickness: 2,
+      );
+    }
+    return s;
+  }
+
+  final spans = <InlineSpan>[];
   for (var i = 0; i < words.length; i++) {
     final w = words[i];
-    final hi = inRange(w);
-    final normal = hi ? base.copyWith(backgroundColor: highlightColor) : base;
-    final boldHi = hi ? bold.copyWith(backgroundColor: highlightColor) : bold;
+    final normal = styleFor(w);
 
     if (bionic) {
+      final boldHi = normal.copyWith(fontWeight: FontWeight.w700);
       final n = Bionic.boldPrefixLength(w.text);
       if (n > 0) spans.add(TextSpan(text: w.text.substring(0, n), style: boldHi));
       if (n < w.text.length) spans.add(TextSpan(text: w.text.substring(n), style: normal));
@@ -40,8 +58,9 @@ InlineSpan buildParagraphSpan(
     }
 
     if (i != words.length - 1) {
-      // Highlight the inter-word space too, so the sentence highlight is continuous.
-      final sepHi = hi && inRange(words[i + 1]);
+      // Carry the read-along background across the inter-word space (keeps the
+      // highlight continuous); the note underline stays on words only.
+      final sepHi = inRange(w) && inRange(words[i + 1]);
       spans.add(TextSpan(
         text: ' ',
         style: sepHi ? base.copyWith(backgroundColor: highlightColor) : base,
