@@ -9,38 +9,26 @@ import '../../../domain/reflow/paginator.dart';
 import '../../../domain/reflow/sentences.dart';
 import 'paragraph_span.dart';
 
-/// The currently-highlighted sentence/paragraph (for the read-along pacer and
-/// the scroll-linked reading guide). Driven via a [ValueListenable] so updates
-/// repaint only the visible paragraphs, not the whole reader — keeping it
-/// smooth and in sync with scrolling.
+/// A highlight chunk: (startOffset, endOffset, wordCount).
+typedef Chunk = (int, int, int);
+
+/// The currently-highlighted run (read-along pacer / reading guide). Driven via
+/// a [ValueListenable] so updates repaint only the visible paragraphs.
 class ReadingHighlight {
   const ReadingHighlight({
     this.sentenceStart = -1,
     this.sentenceEnd = -1,
-    this.paragraphStart = -1,
-    this.paragraphEnd = -1,
     this.sentenceColor,
-    this.paragraphColor,
   });
 
   final int sentenceStart;
   final int sentenceEnd;
-  final int paragraphStart;
-  final int paragraphEnd;
   final Color? sentenceColor;
-  final Color? paragraphColor;
 
   static const none = ReadingHighlight();
-
-  bool get active => sentenceColor != null && sentenceEnd > sentenceStart;
-  bool paragraphContains(PageParagraph p) =>
-      paragraphColor != null &&
-      paragraphEnd > paragraphStart &&
-      p.start < paragraphEnd &&
-      p.end > paragraphStart;
 }
 
-/// Lets the screen observe and drive the reader (page N/M, jumps).
+/// Lets the screen observe and drive the reader (page N/M, jumps, chunks).
 class PageReaderController extends ChangeNotifier {
   int pageIndex = 0;
   int pageCount = 1;
@@ -50,21 +38,29 @@ class PageReaderController extends ChangeNotifier {
   void Function(int offset)? _jumpToOffset;
   void Function(int page)? _goToPage;
   void Function(int offset)? _ensureVisibleFn;
+  Chunk? Function(int offset)? _chunkAtFn;
+  Chunk? Function(int offset)? _nextChunkFn;
 
   void jumpToOffset(int offset) => _jumpToOffset?.call(offset);
   void goToPage(int page) => _goToPage?.call(page);
   void next() => _goToPage?.call(pageIndex + 1);
   void prev() => _goToPage?.call(pageIndex - 1);
   void ensureVisible(int offset) => _ensureVisibleFn?.call(offset);
+  Chunk? chunkAt(int offset) => _chunkAtFn?.call(offset);
+  Chunk? nextChunkAfter(int offset) => _nextChunkFn?.call(offset);
 
   void _bind({
     required void Function(int) jumpToOffset,
     required void Function(int) goToPage,
     required void Function(int) ensureVisible,
+    required Chunk? Function(int) chunkAt,
+    required Chunk? Function(int) nextChunkAfter,
   }) {
     _jumpToOffset = jumpToOffset;
     _goToPage = goToPage;
     _ensureVisibleFn = ensureVisible;
+    _chunkAtFn = chunkAt;
+    _nextChunkFn = nextChunkAfter;
   }
 
   void _update({int? pageIndex, int? pageCount, int? currentOffset, bool? complete}) {
@@ -86,19 +82,16 @@ class PageReaderController extends ChangeNotifier {
   }
 }
 
-/// Per-page text measurements, cached so the reading-line lookup is O(1)-ish.
+/// Per-page measurements (cached): paragraph tops + each paragraph's ≤2-line
+/// highlight chunks with their cumulative heights.
 class _PageMetrics {
-  _PageMetrics(this.paragraphTop, this.paragraphHeight, this.sentenceCumHeight,
-      this.sentenceStart);
+  _PageMetrics(this.paragraphTop, this.chunks, this.chunkCumHeight);
 
   final List<double> paragraphTop;
-  final List<double> paragraphHeight;
-  final List<List<double>> sentenceCumHeight;
-  final List<List<int>> sentenceStart;
+  final List<List<Chunk>> chunks;
+  final List<List<double>> chunkCumHeight;
 }
 
-/// A vertically-scrolling, virtualized reader (lazy pagination + windowed
-/// render), with an optional read-along/reading-guide highlight.
 class PaginatedReader extends StatefulWidget {
   const PaginatedReader({
     super.key,
@@ -112,7 +105,7 @@ class PaginatedReader extends StatefulWidget {
     this.controller,
     this.highlight,
     this.readingHelper = false,
-    this.onReadingLineOffset,
+    this.onReadingChunk,
   });
 
   final ReadingDocument document;
@@ -123,13 +116,11 @@ class PaginatedReader extends StatefulWidget {
   final int initialOffset;
   final ValueChanged<int>? onOffsetChanged;
   final PageReaderController? controller;
-
-  /// Current highlight (repaints only affected paragraphs when it changes).
   final ValueListenable<ReadingHighlight>? highlight;
 
-  /// When true, reports the sentence at the reading line as the user scrolls.
+  /// When true, reports the ≤2-line chunk at the reading line as the user scrolls.
   final bool readingHelper;
-  final ValueChanged<int>? onReadingLineOffset;
+  final ValueChanged<Chunk>? onReadingChunk;
 
   @override
   State<PaginatedReader> createState() => _PaginatedReaderState();
@@ -165,6 +156,8 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       jumpToOffset: _jumpToOffset,
       goToPage: _animateToPage,
       ensureVisible: _ensureVisible,
+      chunkAt: _chunkAt,
+      nextChunkAfter: _nextChunkAfter,
     );
     _itemPositions.itemPositions.addListener(_onPositions);
   }
@@ -194,15 +187,14 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       setState(() {});
     }
 
-    // Reading guide: report the sentence at the reading line every frame
-    // (cheap thanks to cached page metrics) so it stays in sync with scroll.
-    if (widget.readingHelper && widget.onReadingLineOffset != null) {
-      final offset = _readingLineOffset(positions);
-      if (offset != null) widget.onReadingLineOffset!(offset);
+    if (widget.readingHelper && widget.onReadingChunk != null) {
+      final chunk = _readingLineChunk(positions);
+      if (chunk != null) widget.onReadingChunk!(chunk);
     }
   }
 
-  int? _readingLineOffset(Iterable<ItemPosition> positions) {
+  /// The ≤2-line chunk at the reading line (~⅓ down the viewport).
+  Chunk? _readingLineChunk(Iterable<ItemPosition> positions) {
     const band = 0.3;
     if (_vh <= 0) return null;
     ItemPosition? at;
@@ -215,11 +207,10 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     at ??= positions.reduce((a, b) => a.index < b.index ? a : b);
     final pageIndex = at.index.clamp(0, _pages.length - 1);
     final page = _pages[pageIndex];
-    if (page.paragraphs.isEmpty) return page.start;
+    if (page.paragraphs.isEmpty) return null;
 
     final m = _metricsFor(pageIndex, page);
     final target = (band - at.itemLeadingEdge) * _vh;
-
     var pi = 0;
     for (var i = 0; i < m.paragraphTop.length; i++) {
       if (m.paragraphTop[i] <= target) {
@@ -229,20 +220,58 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       }
     }
     final sub = target - m.paragraphTop[pi];
-    final cum = m.sentenceCumHeight[pi];
-    final starts = m.sentenceStart[pi];
+    final chunks = m.chunks[pi];
+    final cum = m.chunkCumHeight[pi];
     for (var k = 0; k < cum.length; k++) {
-      if (cum[k] >= sub) return starts[k];
+      if (cum[k] >= sub) return chunks[k];
     }
-    return starts.isNotEmpty ? starts.last : page.paragraphs[pi].start;
+    return chunks.isNotEmpty ? chunks.last : null;
+  }
+
+  Chunk? _chunkAt(int offset) {
+    _ensureComputedForOffset(offset);
+    final pageIndex = Paginator.pageForOffset(_pages, offset);
+    if (pageIndex < 0 || pageIndex >= _pages.length) return null;
+    final m = _metricsFor(pageIndex, _pages[pageIndex]);
+    Chunk? last;
+    for (final pc in m.chunks) {
+      for (final c in pc) {
+        if (c.$1 <= offset && offset < c.$2) return c;
+        if (c.$1 <= offset) last = c;
+      }
+    }
+    if (last != null) return last;
+    for (final pc in m.chunks) {
+      if (pc.isNotEmpty) return pc.first;
+    }
+    return null;
+  }
+
+  Chunk? _nextChunkAfter(int offset) {
+    _ensureComputedForOffset(offset);
+    var pageIndex = Paginator.pageForOffset(_pages, offset);
+    if (pageIndex < 0) pageIndex = 0;
+    while (true) {
+      if (pageIndex >= _pages.length) {
+        if (!(_paginator?.hasMore ?? false)) return null;
+        _ensureComputedForPage(pageIndex);
+        if (pageIndex >= _pages.length) return null;
+      }
+      final m = _metricsFor(pageIndex, _pages[pageIndex]);
+      for (final pc in m.chunks) {
+        for (final c in pc) {
+          if (c.$1 > offset) return c;
+        }
+      }
+      pageIndex++;
+    }
   }
 
   _PageMetrics _metricsFor(int pageIndex, ReaderPage page) {
     return _metricsCache.putIfAbsent(pageIndex, () {
       final tops = <double>[];
-      final heights = <double>[];
-      final cum = <List<double>>[];
-      final starts = <List<int>>[];
+      final chunks = <List<Chunk>>[];
+      final cums = <List<double>>[];
       var acc = _vPad;
       for (var i = 0; i < page.paragraphs.length; i++) {
         final para = page.paragraphs[i];
@@ -252,27 +281,59 @@ class _PaginatedReaderState extends State<PaginatedReader> {
               : widget.paragraphSpacing * 1.8;
         }
         final pStyle = styleForRole(para.role, widget.style);
-        final h = _measure(para.text, pStyle, _cw, _ts);
         tops.add(acc);
-        heights.add(h);
-
-        final sentences = Sentences.split(para.words);
-        final ch = <double>[];
-        final st = <int>[];
-        final sb = StringBuffer();
-        for (final s in sentences) {
-          if (sb.isNotEmpty) sb.write(' ');
-          sb.write(s.map((w) => w.text).join(' '));
-          ch.add(_measure(sb.toString(), pStyle, _cw, _ts));
-          st.add(s.first.start);
-        }
-        cum.add(ch);
-        starts.add(st);
-        acc += h;
+        final (pc, cum) = _paragraphChunks(para, pStyle);
+        chunks.add(pc);
+        cums.add(cum);
+        acc += _measure(para.text, pStyle, _cw, _ts);
       }
-      return _PageMetrics(tops, heights, cum, starts);
+      return _PageMetrics(tops, chunks, cums);
     });
   }
+
+  /// Split a paragraph into chunks of at most ~2 rendered lines, preferring to
+  /// end at a sentence boundary when one falls in the second half of the chunk.
+  (List<Chunk>, List<double>) _paragraphChunks(PageParagraph para, TextStyle pStyle) {
+    final words = para.words;
+    final chunks = <Chunk>[];
+    final cum = <double>[];
+    if (words.isEmpty) return (chunks, cum);
+    final lh = (pStyle.fontSize ?? 18.0) * (pStyle.height ?? 1.4);
+
+    var i = 0;
+    var acc = 0.0;
+    while (i < words.length) {
+      final remaining = words.length - i;
+      var lo = 1, hi = remaining, fit = 1;
+      while (lo <= hi) {
+        final mid = (lo + hi) ~/ 2;
+        final h = _measure(_joinWords(words, i, mid), pStyle, _cw, _ts);
+        if (lh <= 0 || (h / lh).round() <= 2) {
+          fit = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      final end = (i + fit - 1).clamp(i, words.length - 1);
+      var breakAt = end;
+      final minBreak = i + (fit ~/ 2);
+      for (var k = end; k >= minBreak && k >= i; k--) {
+        if (Sentences.endsSentence(words[k].text)) {
+          breakAt = k;
+          break;
+        }
+      }
+      chunks.add((words[i].start, words[breakAt].end, breakAt - i + 1));
+      acc += _measure(_joinWords(words, i, breakAt - i + 1), pStyle, _cw, _ts);
+      cum.add(acc);
+      i = breakAt + 1;
+    }
+    return (chunks, cum);
+  }
+
+  String _joinWords(List<Word> words, int from, int count) =>
+      words.sublist(from, from + count).map((w) => w.text).join(' ');
 
   void _jumpToOffset(int offset) {
     _targetOffset = offset;
@@ -513,7 +574,7 @@ class _PageBody extends StatelessWidget {
   }
 
   Widget _styled(PageParagraph p, ReadingHighlight h) {
-    final text = Text.rich(
+    return Text.rich(
       buildParagraphSpan(
         p.words,
         styleForRole(p.role, style),
@@ -523,16 +584,6 @@ class _PageBody extends StatelessWidget {
         highlightColor: h.sentenceColor,
       ),
       textAlign: TextAlign.start,
-    );
-    if (!h.paragraphContains(p)) return text;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: h.paragraphColor,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: text,
     );
   }
 }

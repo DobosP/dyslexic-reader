@@ -38,10 +38,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   bool? _lastPacing;
   List<OutlineItem>? _outline;
   ReadingStats? _stats;
-  List<SentenceRef>? _sentences;
-  ReadingDocument? _sentencesDoc;
 
-  int _currentSentence = -1;
+  // Current highlight chunk (≤2 rendered lines): [start, end) + word count.
+  int _hlStart = -1;
+  int _hlEnd = -1;
+  int _hlWords = 0;
   bool _playing = false;
   bool _helperOn = false;
   Timer? _timer;
@@ -53,14 +54,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           pacing ? Sentences.splitDocument(widget.document) : widget.document;
     }
     return _effectiveDoc!;
-  }
-
-  List<SentenceRef> _resolveSentences(ReadingDocument doc) {
-    if (_sentences == null || !identical(_sentencesDoc, doc)) {
-      _sentencesDoc = doc;
-      _sentences = DocumentStructure.sentenceRefs(doc);
-    }
-    return _sentences!;
   }
 
   @override
@@ -77,40 +70,36 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     super.dispose();
   }
 
-  /// Push the current sentence into the highlight notifier (or clear it).
-  void _applyHighlight() {
-    final sentences = _sentences ?? const <SentenceRef>[];
-    if (_currentSentence < 0 || _currentSentence >= sentences.length) {
+  /// Push a highlight chunk into the notifier (or clear it when null).
+  void _setHighlight(Chunk? chunk) {
+    if (chunk == null) {
+      _hlStart = -1;
+      _hlEnd = -1;
+      _hlWords = 0;
       _highlight.value = ReadingHighlight.none;
       return;
     }
-    final s = sentences[_currentSentence];
+    _hlStart = chunk.$1;
+    _hlEnd = chunk.$2;
+    _hlWords = chunk.$3;
     final accent = paletteFor(ref.read(readingPrefsProvider).themeId).accent;
     _highlight.value = ReadingHighlight(
-      sentenceStart: s.start,
-      sentenceEnd: s.end,
-      paragraphStart: s.paragraphStart,
-      paragraphEnd: s.paragraphEnd,
+      sentenceStart: _hlStart,
+      sentenceEnd: _hlEnd,
       sentenceColor: accent.withValues(alpha: 0.22),
-      paragraphColor: accent.withValues(alpha: 0.08),
     );
   }
 
-  // --- Read-along pacer (auto-advance) ---
+  // --- Read-along pacer (auto-advance, one ≤2-line chunk at a time) ---
 
   void _togglePlay() => _playing ? _pause() : _play();
 
   void _play() {
-    final sentences = _sentences ?? const <SentenceRef>[];
-    if (sentences.isEmpty) return;
-    setState(() {
-      _playing = true;
-      if (_currentSentence < 0 || _currentSentence >= sentences.length) {
-        _currentSentence =
-            DocumentStructure.sentenceIndexAtOffset(sentences, _pageCtrl.currentOffset);
-      }
-    });
-    _applyHighlight();
+    final start =
+        _pageCtrl.chunkAt(_hlStart >= 0 ? _hlStart : _pageCtrl.currentOffset);
+    if (start == null) return;
+    setState(() => _playing = true);
+    _setHighlight(start);
     _tick();
   }
 
@@ -120,24 +109,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   void _tick() {
-    if (!_playing) return;
-    final sentences = _sentences ?? const <SentenceRef>[];
-    if (_currentSentence < 0 || _currentSentence >= sentences.length) {
-      _pause();
-      return;
-    }
-    final ref0 = sentences[_currentSentence];
-    _pageCtrl.ensureVisible(ref0.start);
-    _applyHighlight();
+    if (!_playing || _hlStart < 0) return;
+    _pageCtrl.ensureVisible(_hlStart);
     final wpm = ref.read(readingPrefsProvider).readingWpm.clamp(40.0, 600.0);
-    final seconds = (ref0.wordCount / wpm * 60).clamp(0.6, 8.0);
+    final seconds = (_hlWords / wpm * 60).clamp(0.6, 8.0);
     _timer = Timer(Duration(milliseconds: (seconds * 1000).round()), () {
       if (!mounted || !_playing) return;
-      if (_currentSentence + 1 >= sentences.length) {
+      final next = _pageCtrl.nextChunkAfter(_hlStart);
+      if (next == null) {
         _pause();
         return;
       }
-      _currentSentence++;
+      _setHighlight(next);
       _tick();
     });
   }
@@ -145,29 +128,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   // --- Reading guide (scroll-linked highlight) ---
 
   void _toggleHelper() {
-    setState(() {
-      _helperOn = !_helperOn;
-      if (_helperOn) {
-        final sentences = _sentences ?? const <SentenceRef>[];
-        if (sentences.isNotEmpty && _currentSentence < 0) {
-          _currentSentence = DocumentStructure.sentenceIndexAtOffset(
-              sentences, _pageCtrl.currentOffset);
-        }
-      } else if (!_playing) {
-        _currentSentence = -1;
-      }
-    });
-    _applyHighlight();
+    setState(() => _helperOn = !_helperOn);
+    if (_helperOn) {
+      _setHighlight(_pageCtrl.chunkAt(_pageCtrl.currentOffset));
+    } else if (!_playing) {
+      _setHighlight(null);
+    }
   }
 
-  void _onReadingLine(int offset) {
+  void _onReadingChunk(Chunk chunk) {
     if (_playing || !_helperOn) return;
-    final sentences = _sentences ?? const <SentenceRef>[];
-    if (sentences.isEmpty) return;
-    final idx = DocumentStructure.sentenceIndexAtOffset(sentences, offset);
-    if (idx != _currentSentence) {
-      _currentSentence = idx;
-      _applyHighlight();
+    if (chunk.$1 != _hlStart || chunk.$2 != _hlEnd) {
+      _setHighlight(chunk);
     }
   }
 
@@ -178,7 +150,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final entry = widget.entry;
     final canViewOriginal = entry?.pdfPath != null && entry!.pageCount > 0;
     final doc = _resolveDoc(prefs.sentencePacing);
-    final sentences = _resolveSentences(doc);
 
     final style = TextStyle(
       fontFamily: prefs.fontFamily.family,
@@ -197,7 +168,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         stats: _stats ??= DocumentStructure.stats(widget.document),
         onJump: _pageCtrl.jumpToOffset,
       ),
-      floatingActionButton: sentences.isEmpty
+      floatingActionButton: doc.paragraphs.isEmpty
           ? null
           : FloatingActionButton(
               backgroundColor: palette.accent,
@@ -275,7 +246,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 controller: _pageCtrl,
                 highlight: _highlight,
                 readingHelper: _helperOn,
-                onReadingLineOffset: _onReadingLine,
+                onReadingChunk: _onReadingChunk,
               ),
             ),
             _PageBar(controller: _pageCtrl, palette: palette),

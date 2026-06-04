@@ -1,4 +1,5 @@
 import '../models/reading_document.dart';
+import 'text_cleanup.dart';
 
 /// Turns raw text or typed [TextBlock]s into a [ReadingDocument].
 class Tokenizer {
@@ -38,7 +39,7 @@ class Tokenizer {
     for (var i = 0; i < blocks.length; i++) {
       if (i > 0) buffer.write('\n\n');
       final start = buffer.length;
-      buffer.write(blocks[i].text);
+      buffer.write(TextCleanup.clean(blocks[i].text));
       ranges.add([start, buffer.length]);
     }
     final text = buffer.toString();
