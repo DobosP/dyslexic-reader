@@ -125,9 +125,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     LibraryEntry? entry;
     Object? failure;
     try {
-      entry = await doImport((done, total) {
-        message.value =
-            total > 0 ? 'Recognizing text… $done / $total' : 'Recognizing text…';
+      entry = await doImport((done, total, {String? label}) {
+        message.value = label ??
+            (total > 0 ? 'Recognizing text… $done / $total' : 'Recognizing text…');
       });
     } catch (e) {
       failure = e;

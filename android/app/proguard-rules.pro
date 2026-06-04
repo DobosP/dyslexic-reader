@@ -12,3 +12,8 @@
 # Korean) which aren't on the classpath. Keep what we use; ignore the rest.
 -keep class com.google.mlkit.vision.text.** { *; }
 -dontwarn com.google.mlkit.**
+
+# ONNX Runtime (mobile_ocr / PaddleOCR PP-OCRv5). Keep the JNI bridge classes
+# and ignore optional references R8 can't resolve.
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**

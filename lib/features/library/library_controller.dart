@@ -10,8 +10,9 @@ import '../../domain/models/library_entry.dart';
 import '../../domain/models/reading_document.dart';
 import '../../domain/reflow/tokenizer.dart';
 
-/// Reports OCR progress (pages done / total) so the UI can show it.
-typedef OcrProgress = void Function(int done, int total);
+/// Reports OCR progress (pages done / total, with an optional status label) so
+/// the UI can show it.
+typedef OcrProgress = void Function(int done, int total, {String? label});
 
 class ImportException implements Exception {
   const ImportException(this.message);
@@ -125,7 +126,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   Future<List<TextBlock>> _ocrPdf(String path, int pageCount, OcrProgress? onProgress) async {
     if (pageCount <= 0) return const [];
     const channel = PdfTextChannel();
-    final ocr = OcrService();
+    final ocr = await _resolveOcrEngine(onProgress);
     final tmpDir = await getTemporaryDirectory();
     final blocks = <TextBlock>[];
     try {
@@ -140,6 +141,8 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
           for (final text in await ocr.recognizeBlocks(tmp.path)) {
             blocks.add(TextBlock(role: BlockRole.body, text: text));
           }
+        } catch (_) {
+          // Skip a page the engine can't process; keep importing the rest.
         } finally {
           try {
             await tmp.delete();
@@ -151,6 +154,20 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       await ocr.dispose();
     }
     return blocks;
+  }
+
+  /// Prefer PaddleOCR (PP-OCRv5); fall back to bundled ML Kit if its models
+  /// can't be prepared (e.g. offline on first run, or an unsupported device).
+  Future<OcrEngine> _resolveOcrEngine(OcrProgress? onProgress) async {
+    final paddle = PaddleOcrEngine();
+    try {
+      onProgress?.call(0, 0, label: 'Preparing OCR model…');
+      if (await paddle.prepare()) return paddle;
+    } catch (_) {
+      // fall through to ML Kit
+    }
+    await paddle.dispose();
+    return MlKitOcrEngine();
   }
 
   Future<LibraryEntry> _store({

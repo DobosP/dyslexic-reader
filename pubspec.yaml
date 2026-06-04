@@ -18,6 +18,12 @@ dependencies:
   file_selector: ^1.1.0
   scrollable_positioned_list: ^0.3.8
   google_mlkit_text_recognition: ^0.15.1
+  # PaddleOCR PP-OCRv5 (ONNX) on-device OCR. ~20 MB model downloads on the first
+  # scanned-PDF import, then runs fully offline. Pinned for reproducible builds.
+  mobile_ocr:
+    git:
+      url: https://github.com/ente-io/mobile_ocr
+      ref: bd1cce917e914690c00cc138b000b728742dde2b
 
 dev_dependencies:
   flutter_test:
