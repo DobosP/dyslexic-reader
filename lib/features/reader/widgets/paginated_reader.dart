@@ -106,6 +106,7 @@ class PaginatedReader extends StatefulWidget {
     this.highlight,
     this.readingHelper = false,
     this.onReadingChunk,
+    this.highlightMaxRows = 2,
   });
 
   final ReadingDocument document;
@@ -118,9 +119,12 @@ class PaginatedReader extends StatefulWidget {
   final PageReaderController? controller;
   final ValueListenable<ReadingHighlight>? highlight;
 
-  /// When true, reports the ≤2-line chunk at the reading line as the user scrolls.
+  /// When true, reports the chunk at the reading line as the user scrolls.
   final bool readingHelper;
   final ValueChanged<Chunk>? onReadingChunk;
+
+  /// How many rendered rows a highlight chunk spans at most (1, 2, or 3).
+  final int highlightMaxRows;
 
   @override
   State<PaginatedReader> createState() => _PaginatedReaderState();
@@ -308,7 +312,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       while (lo <= hi) {
         final mid = (lo + hi) ~/ 2;
         final h = _measure(_joinWords(words, i, mid), pStyle, _cw, _ts);
-        if (lh <= 0 || (h / lh).round() <= 2) {
+        if (lh <= 0 || (h / lh).round() <= widget.highlightMaxRows) {
           fit = mid;
           lo = mid + 1;
         } else {
@@ -443,6 +447,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
           colWidth.floor(),
           pageHeight.floor(),
           widget.paragraphSpacing.floor(),
+          widget.highlightMaxRows,
         ].join('|');
 
         if (signature != _signature) {

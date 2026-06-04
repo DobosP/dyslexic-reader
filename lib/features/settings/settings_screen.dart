@@ -138,6 +138,27 @@ class SettingsScreen extends ConsumerWidget {
             display: '${prefs.readingWpm.round()} wpm',
             onChanged: c.setReadingWpm,
           ),
+          const SizedBox(height: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Highlight size', style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 1, label: Text('1 row')),
+                    ButtonSegment(value: 2, label: Text('2 rows')),
+                    ButtonSegment(value: 3, label: Text('3 rows')),
+                  ],
+                  selected: {prefs.highlightMaxRows},
+                  onSelectionChanged: (s) => c.setHighlightMaxRows(s.first),
+                  showSelectedIcon: false,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

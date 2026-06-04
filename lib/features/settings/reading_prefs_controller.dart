@@ -26,6 +26,8 @@ class ReadingPrefsController extends Notifier<ReadingPrefs> {
   void setBionic(bool v) => _update(state.copyWith(bionicEnabled: v));
   void setSentencePacing(bool v) => _update(state.copyWith(sentencePacing: v));
   void setReadingWpm(double v) => _update(state.copyWith(readingWpm: v));
+  void setHighlightMaxRows(int v) =>
+      _update(state.copyWith(highlightMaxRows: v));
   void reset() => _update(const ReadingPrefs());
 }
 

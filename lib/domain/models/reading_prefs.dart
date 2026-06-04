@@ -51,6 +51,7 @@ class ReadingPrefs {
     this.bionicEnabled = false,
     this.sentencePacing = false,
     this.readingWpm = 180,
+    this.highlightMaxRows = 2,
   });
 
   final ReadingFontFamily fontFamily;
@@ -85,6 +86,9 @@ class ReadingPrefs {
   /// Read-along pace in words per minute (for the smart highlighter).
   final double readingWpm;
 
+  /// How many rendered rows the smart highlight spans at once (1, 2, or 3).
+  final int highlightMaxRows;
+
   // --- Derived values used by the renderer ---
   double get letterSpacingPx => letterSpacingEm * fontSizeSp;
   double get wordSpacingPx => wordSpacingEm * fontSizeSp;
@@ -106,6 +110,7 @@ class ReadingPrefs {
     bool? bionicEnabled,
     bool? sentencePacing,
     double? readingWpm,
+    int? highlightMaxRows,
   }) {
     return ReadingPrefs(
       fontFamily: fontFamily ?? this.fontFamily,
@@ -119,6 +124,7 @@ class ReadingPrefs {
       bionicEnabled: bionicEnabled ?? this.bionicEnabled,
       sentencePacing: sentencePacing ?? this.sentencePacing,
       readingWpm: readingWpm ?? this.readingWpm,
+      highlightMaxRows: highlightMaxRows ?? this.highlightMaxRows,
     );
   }
 
@@ -134,6 +140,7 @@ class ReadingPrefs {
         'bionicEnabled': bionicEnabled,
         'sentencePacing': sentencePacing,
         'readingWpm': readingWpm,
+        'highlightMaxRows': highlightMaxRows,
       };
 
   factory ReadingPrefs.fromJson(Map<String, dynamic> j) {
@@ -150,6 +157,8 @@ class ReadingPrefs {
       bionicEnabled: j['bionicEnabled'] as bool? ?? d.bionicEnabled,
       sentencePacing: j['sentencePacing'] as bool? ?? d.sentencePacing,
       readingWpm: _toDouble(j['readingWpm'], d.readingWpm),
+      highlightMaxRows:
+          (j['highlightMaxRows'] as num?)?.toInt() ?? d.highlightMaxRows,
     );
   }
 

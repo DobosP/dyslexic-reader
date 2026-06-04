@@ -247,6 +247,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 highlight: _highlight,
                 readingHelper: _helperOn,
                 onReadingChunk: _onReadingChunk,
+                highlightMaxRows: prefs.highlightMaxRows,
               ),
             ),
             _PageBar(controller: _pageCtrl, palette: palette),
