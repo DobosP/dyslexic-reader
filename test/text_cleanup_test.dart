@@ -10,4 +10,10 @@ void main() {
     expect(out.contains('  '), isFalse);
     expect(out.startsWith('office file'), isTrue);
   });
+
+  test('folds full-width forms and normalizes unicode spaces', () {
+    // Full-width "Hello", a non-breaking space, and an ideographic space.
+    final out = TextCleanup.clean('Ｈｅｌｌｏ World　end');
+    expect(out, 'Hello World end');
+  });
 }
