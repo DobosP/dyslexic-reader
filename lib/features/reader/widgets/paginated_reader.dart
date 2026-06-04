@@ -40,6 +40,7 @@ class PageReaderController extends ChangeNotifier {
   void Function(int offset)? _ensureVisibleFn;
   Chunk? Function(int offset)? _chunkAtFn;
   Chunk? Function(int offset)? _nextChunkFn;
+  Chunk? Function(int offset)? _prevChunkFn;
 
   void jumpToOffset(int offset) => _jumpToOffset?.call(offset);
   void goToPage(int page) => _goToPage?.call(page);
@@ -48,6 +49,7 @@ class PageReaderController extends ChangeNotifier {
   void ensureVisible(int offset) => _ensureVisibleFn?.call(offset);
   Chunk? chunkAt(int offset) => _chunkAtFn?.call(offset);
   Chunk? nextChunkAfter(int offset) => _nextChunkFn?.call(offset);
+  Chunk? prevChunkBefore(int offset) => _prevChunkFn?.call(offset);
 
   void _bind({
     required void Function(int) jumpToOffset,
@@ -55,12 +57,14 @@ class PageReaderController extends ChangeNotifier {
     required void Function(int) ensureVisible,
     required Chunk? Function(int) chunkAt,
     required Chunk? Function(int) nextChunkAfter,
+    required Chunk? Function(int) prevChunkBefore,
   }) {
     _jumpToOffset = jumpToOffset;
     _goToPage = goToPage;
     _ensureVisibleFn = ensureVisible;
     _chunkAtFn = chunkAt;
     _nextChunkFn = nextChunkAfter;
+    _prevChunkFn = prevChunkBefore;
   }
 
   void _update({int? pageIndex, int? pageCount, int? currentOffset, bool? complete}) {
@@ -172,6 +176,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       ensureVisible: _ensureVisible,
       chunkAt: _chunkAt,
       nextChunkAfter: _nextChunkAfter,
+      prevChunkBefore: _prevChunkBefore,
     );
     _itemPositions.itemPositions.addListener(_onPositions);
   }
@@ -279,6 +284,24 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       }
       pageIndex++;
     }
+  }
+
+  Chunk? _prevChunkBefore(int offset) {
+    _ensureComputedForOffset(offset);
+    var pageIndex = Paginator.pageForOffset(_pages, offset);
+    if (pageIndex < 0) pageIndex = 0;
+    for (var pi = pageIndex; pi >= 0; pi--) {
+      if (pi >= _pages.length) continue;
+      final m = _metricsFor(pi, _pages[pi]);
+      Chunk? best;
+      for (final pc in m.chunks) {
+        for (final c in pc) {
+          if (c.$1 < offset) best = c;
+        }
+      }
+      if (best != null) return best;
+    }
+    return null;
   }
 
   _PageMetrics _metricsFor(int pageIndex, ReaderPage page) {

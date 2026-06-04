@@ -24,6 +24,8 @@ dependencies:
     git:
       url: https://github.com/ente-io/mobile_ocr
       ref: bd1cce917e914690c00cc138b000b728742dde2b
+  # On-device text-to-speech (system voices) for read-aloud.
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 import '../../app/theme/reading_theme.dart';
 import '../../domain/models/library_entry.dart';
@@ -39,13 +38,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   List<OutlineItem>? _outline;
   ReadingStats? _stats;
 
-  // Current highlight chunk (≤2 rendered lines): [start, end) + word count.
+  // Current highlight chunk (≤2 rendered lines): character range [start, end).
   int _hlStart = -1;
   int _hlEnd = -1;
-  int _hlWords = 0;
   bool _playing = false;
   bool _helperOn = false;
-  Timer? _timer;
+  FlutterTts? _tts;
 
   ReadingDocument _resolveDoc(bool pacing) {
     if (_effectiveDoc == null || _lastPacing != pacing) {
@@ -71,13 +69,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _tts?.stop();
     _highlight.dispose();
     final entry = widget.entry;
     if (entry != null) {
-      ref
-          .read(libraryControllerProvider.notifier)
-          .saveProgress(entry.id, _pageCtrl.currentOffset);
+      final notifier = ref.read(libraryControllerProvider.notifier);
+      notifier.saveProgress(entry.id, _pageCtrl.currentOffset);
+      if (_hlStart >= 0) notifier.saveTtsPosition(entry.id, _hlStart);
     }
     _pageCtrl.dispose();
     super.dispose();
@@ -88,13 +86,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     if (chunk == null) {
       _hlStart = -1;
       _hlEnd = -1;
-      _hlWords = 0;
       _highlight.value = ReadingHighlight.none;
       return;
     }
     _hlStart = chunk.$1;
     _hlEnd = chunk.$2;
-    _hlWords = chunk.$3;
     final accent = paletteFor(ref.read(readingPrefsProvider).themeId).accent;
     _highlight.value = ReadingHighlight(
       sentenceStart: _hlStart,
@@ -103,39 +99,124 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
-  // --- Read-along pacer (auto-advance, one ≤2-line chunk at a time) ---
+  // --- Read-aloud (text-to-speech, one ≤2-line chunk at a time) ---
 
-  void _togglePlay() => _playing ? _pause() : _play();
-
-  void _play() {
-    final start =
-        _pageCtrl.chunkAt(_hlStart >= 0 ? _hlStart : _pageCtrl.currentOffset);
-    if (start == null) return;
-    setState(() => _playing = true);
-    _setHighlight(start);
-    _tick();
+  void _togglePlay() {
+    if (_playing) {
+      _pause();
+    } else {
+      _play();
+    }
   }
 
-  void _pause() {
-    _timer?.cancel();
-    setState(() => _playing = false);
+  Future<void> _ensureTts() async {
+    if (_tts != null) return;
+    final tts = FlutterTts();
+    tts.setCompletionHandler(_onSpoken);
+    _tts = tts; // set before awaiting so callers never see a null engine
+    await tts.setSpeechRate(_ttsRate());
   }
 
-  void _tick() {
-    if (!_playing || _hlStart < 0) return;
-    _pageCtrl.ensureVisible(_hlStart);
-    final wpm = ref.read(readingPrefsProvider).readingWpm.clamp(40.0, 600.0);
-    final seconds = (_hlWords / wpm * 60).clamp(0.6, 8.0);
-    _timer = Timer(Duration(milliseconds: (seconds * 1000).round()), () {
-      if (!mounted || !_playing) return;
-      final next = _pageCtrl.nextChunkAfter(_hlStart);
-      if (next == null) {
-        _pause();
-        return;
+  /// Map the read-along pace (wpm) to a TTS rate (~180 wpm ≈ normal).
+  double _ttsRate() =>
+      (ref.read(readingPrefsProvider).readingWpm / 360).clamp(0.2, 1.0);
+
+  String _chunkText(int start, int end) {
+    final t = widget.document.text;
+    final s = start.clamp(0, t.length);
+    final e = end.clamp(s, t.length);
+    return t.substring(s, e).replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  Future<void> _play() async {
+    try {
+      await _ensureTts();
+      if (!mounted) return;
+      var anchor = _hlStart;
+      if (anchor < 0) {
+        // Resume from the last spoken position when starting fresh.
+        final saved =
+            _liveEntry(ref.read(libraryControllerProvider).valueOrNull)?.ttsCharOffset ?? 0;
+        anchor = saved > 0 ? saved : _pageCtrl.currentOffset;
       }
-      _setHighlight(next);
-      _tick();
-    });
+      final start = _pageCtrl.chunkAt(anchor);
+      if (start == null) return;
+      await _tts!.setSpeechRate(_ttsRate());
+      if (!mounted) return;
+      setState(() => _playing = true);
+      _speak(start);
+    } catch (_) {
+      // Text-to-speech unavailable on this device; leave playback off.
+    }
+  }
+
+  void _speak(Chunk chunk) {
+    _setHighlight(chunk);
+    _pageCtrl.ensureVisible(chunk.$1);
+    _tts?.speak(_chunkText(chunk.$1, chunk.$2));
+  }
+
+  /// Called when the engine finishes a chunk: advance to the next one.
+  void _onSpoken() {
+    if (!mounted || !_playing) return;
+    final next = _pageCtrl.nextChunkAfter(_hlStart);
+    if (next == null) {
+      _pause();
+      return;
+    }
+    _speak(next);
+  }
+
+  Future<void> _pause() async {
+    await _tts?.stop();
+    if (!mounted) return;
+    setState(() => _playing = false);
+    final entry = widget.entry;
+    if (entry != null && _hlStart >= 0) {
+      await ref
+          .read(libraryControllerProvider.notifier)
+          .saveTtsPosition(entry.id, _hlStart);
+    }
+  }
+
+  /// Jump the read-aloud roughly [seconds] forward (positive) or back.
+  Future<void> _skip(int seconds) async {
+    if (!_playing || _hlStart < 0) return;
+    await _tts?.stop();
+    if (!mounted) return;
+    final target =
+        seconds >= 0 ? _chunkAfterSeconds(seconds) : _chunkBeforeSeconds(-seconds);
+    if (target != null) _speak(target);
+  }
+
+  Chunk? _chunkAfterSeconds(int seconds) {
+    final wpm = ref.read(readingPrefsProvider).readingWpm.clamp(60.0, 400.0);
+    var acc = 0.0;
+    var cur = _pageCtrl.chunkAt(_hlStart);
+    var start = _hlStart;
+    while (acc < seconds) {
+      final next = _pageCtrl.nextChunkAfter(start);
+      if (next == null) break;
+      acc += next.$3 / wpm * 60;
+      cur = next;
+      start = next.$1;
+    }
+    return cur;
+  }
+
+  Chunk? _chunkBeforeSeconds(int seconds) {
+    final wpm = ref.read(readingPrefsProvider).readingWpm.clamp(60.0, 400.0);
+    var acc = 0.0;
+    var cur = _pageCtrl.chunkAt(_hlStart);
+    var start = _hlStart;
+    while (acc < seconds) {
+      final prev = _pageCtrl.prevChunkBefore(start);
+      if (prev == null) break;
+      acc += prev.$3 / wpm * 60;
+      cur = prev;
+      start = prev.$1;
+    }
+    return cur;
   }
 
   // --- Reading guide (scroll-linked highlight) ---
@@ -187,9 +268,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           : FloatingActionButton(
               backgroundColor: palette.accent,
               foregroundColor: palette.background,
-              tooltip: _playing ? 'Pause read-along' : 'Start read-along',
+              tooltip: _playing ? 'Pause' : 'Read aloud',
               onPressed: _togglePlay,
-              child: Icon(_playing ? Icons.pause : Icons.play_arrow),
+              child: Icon(_playing ? Icons.pause : Icons.volume_up),
             ),
       appBar: AppBar(
         backgroundColor: palette.background,
@@ -273,7 +354,39 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 onTextTap: entry == null ? null : _onTextTap,
               ),
             ),
+            if (_playing) _ttsBar(palette),
             _PageBar(controller: _pageCtrl, palette: palette),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _ttsBar(ReadingPalette palette) {
+    return Material(
+      color: palette.background,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton.icon(
+              onPressed: () => _skip(-15),
+              icon: const Icon(Icons.fast_rewind),
+              label: const Text('15s'),
+            ),
+            const SizedBox(width: 12),
+            IconButton.filledTonal(
+              onPressed: _pause,
+              icon: const Icon(Icons.pause),
+              tooltip: 'Pause',
+            ),
+            const SizedBox(width: 12),
+            TextButton.icon(
+              onPressed: () => _skip(15),
+              icon: const Icon(Icons.fast_forward),
+              label: const Text('15s'),
+            ),
           ],
         ),
       ),
