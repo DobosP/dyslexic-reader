@@ -43,6 +43,44 @@ Future<void> openLibraryEntry(
   }
 }
 
+/// Re-extract a saved document (no re-upload) with a progress dialog, applying
+/// the current extraction/OCR pipeline in place.
+Future<void> runReprocess(
+  BuildContext context,
+  WidgetRef ref,
+  LibraryEntry entry,
+) async {
+  final message = ValueNotifier<String>('Reprocessing…');
+  unawaited(showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _ImportProgressDialog(message: message),
+  ));
+  Object? failure;
+  try {
+    await ref.read(libraryControllerProvider.notifier).reprocess(
+      entry,
+      onOcrProgress: (done, total, {String? label}) {
+        message.value = label ??
+            (total > 0 ? 'Recognizing text… $done / $total' : 'Reprocessing…');
+      },
+    );
+  } catch (e) {
+    failure = e;
+  }
+  if (!context.mounted) {
+    message.dispose();
+    return;
+  }
+  Navigator.of(context).pop();
+  message.dispose();
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(
+      failure == null ? 'Reprocessed “${entry.title}”' : 'Reprocess failed: $failure',
+    ),
+  ));
+}
+
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
@@ -321,11 +359,34 @@ class _DocTile extends ConsumerWidget {
         leading: Icon(icon),
         title: Text(entry.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(detail),
-        trailing: IconButton(
-          tooltip: 'Remove',
-          icon: const Icon(Icons.delete_outline),
-          onPressed: () =>
-              ref.read(libraryControllerProvider.notifier).delete(entry),
+        trailing: PopupMenuButton<String>(
+          tooltip: 'Options',
+          onSelected: (value) {
+            if (value == 'reprocess') {
+              runReprocess(context, ref, entry);
+            } else if (value == 'remove') {
+              ref.read(libraryControllerProvider.notifier).delete(entry);
+            }
+          },
+          itemBuilder: (context) => [
+            if (entry.source == DocSource.pdf && entry.pdfPath != null)
+              const PopupMenuItem(
+                value: 'reprocess',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.refresh),
+                  title: Text('Reprocess'),
+                ),
+              ),
+            const PopupMenuItem(
+              value: 'remove',
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.delete_outline),
+                title: Text('Remove'),
+              ),
+            ),
+          ],
         ),
         onTap: () => openLibraryEntry(context, ref, entry),
       ),

@@ -21,6 +21,10 @@ class ImportException implements Exception {
   String toString() => message;
 }
 
+/// Bump when the extraction/OCR pipeline changes, so re-importing an existing
+/// document refreshes its cached text in place instead of keeping the old one.
+const int _kProcessingVersion = 1;
+
 /// Owns the on-device document library: a JSON index plus a cached **typed
 /// blocks** file per document (and, for PDFs, a copied original).
 class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
@@ -35,10 +39,34 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       await root.create(recursive: true);
       _root = root;
       _indexFile = File('${root.path}/index.json');
-      return _readIndex();
+      return _backfillHashes(await _readIndex());
     } catch (_) {
       return <LibraryEntry>[];
     }
+  }
+
+  /// Give already-saved PDFs a content hash (from their stored copy) so they can
+  /// be de-duplicated on the next import. One-time, best-effort.
+  Future<List<LibraryEntry>> _backfillHashes(List<LibraryEntry> entries) async {
+    var changed = false;
+    final out = <LibraryEntry>[];
+    for (final e in entries) {
+      if (e.contentHash.isEmpty && e.pdfPath != null) {
+        try {
+          final f = File(e.pdfPath!);
+          if (await f.exists()) {
+            out.add(e.copyWith(contentHash: _contentHash(await f.readAsBytes())));
+            changed = true;
+            continue;
+          }
+        } catch (_) {
+          // best effort
+        }
+      }
+      out.add(e);
+    }
+    if (changed) await _writeIndex(out);
+    return out;
   }
 
   Future<List<LibraryEntry>> _readIndex() async {
@@ -84,10 +112,21 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     final file = File(path);
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     final title = _stripExtension(name);
+    final bytes = await file.readAsBytes();
+    final hash = _contentHash(bytes);
+
+    // De-duplicate: if this exact document is already saved, refresh it in place
+    // (when the pipeline changed) instead of adding another copy.
+    final existing = _findByHash(hash);
+    if (existing != null) {
+      if (existing.processingVersion >= _kProcessingVersion) {
+        return _moveToTop(existing);
+      }
+      return _reprocessFrom(existing, path, onOcrProgress);
+    }
 
     if (ext == 'pdf') {
       final res = await const PdfTextChannel().extractText(path);
-      final bytes = await file.readAsBytes();
       if (res.hasText) {
         return _store(
           title: title,
@@ -97,6 +136,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
           originalPath: path,
           pdfBytes: bytes,
           pageCount: res.pageCount,
+          contentHash: hash,
         );
       }
       // Scanned / image-only PDF → OCR each page on-device.
@@ -109,6 +149,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
         originalPath: path,
         pdfBytes: bytes,
         pageCount: res.pageCount,
+        contentHash: hash,
       );
     }
 
@@ -119,7 +160,86 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       source: DocSource.txt,
       hasTextLayer: true,
       originalPath: path,
+      contentHash: hash,
     );
+  }
+
+  /// Re-run extraction/OCR for an existing document and open the refreshed
+  /// result, without re-uploading. Re-reads the stored PDF copy.
+  Future<LibraryEntry> reprocess(LibraryEntry e, {OcrProgress? onOcrProgress}) async {
+    final pdf = e.pdfPath;
+    if (e.source == DocSource.pdf && pdf != null && await File(pdf).exists()) {
+      return _reprocessFrom(e, pdf, onOcrProgress);
+    }
+    // Nothing to re-extract (e.g. pasted text) — just mark it current.
+    return _moveToTop(e.copyWith(processingVersion: _kProcessingVersion));
+  }
+
+  LibraryEntry? _findByHash(String hash) {
+    if (hash.isEmpty) return null;
+    for (final e in state.valueOrNull ?? const <LibraryEntry>[]) {
+      if (e.contentHash == hash) return e;
+    }
+    return null;
+  }
+
+  Future<LibraryEntry> _moveToTop(LibraryEntry e) async {
+    final updated = e.copyWith(importedAt: DateTime.now());
+    final list = state.valueOrNull ?? await _readIndex();
+    final next = [updated, ...list.where((x) => x.id != e.id)];
+    await _writeIndex(next);
+    state = AsyncData(next);
+    return updated;
+  }
+
+  /// Re-extract [e] from [path] and overwrite its cached blocks, preserving the
+  /// id, bookmarks, notes, and reading positions.
+  Future<LibraryEntry> _reprocessFrom(
+    LibraryEntry e,
+    String path,
+    OcrProgress? onProgress,
+  ) async {
+    List<TextBlock> blocks;
+    var hasText = true;
+    var pageCount = e.pageCount;
+    if (e.source == DocSource.pdf) {
+      final res = await const PdfTextChannel().extractText(path);
+      pageCount = res.pageCount;
+      if (res.hasText) {
+        blocks = res.blocks;
+      } else {
+        blocks = await _ocrPdf(path, res.pageCount, onProgress);
+        hasText = blocks.isNotEmpty;
+      }
+    } else {
+      blocks = Tokenizer.blocksFromText(await File(path).readAsString());
+    }
+    await File(e.cacheBlocksPath).writeAsString(TextBlock.encodeList(blocks));
+    final updated = e.copyWith(
+      wordCount: Tokenizer.fromBlocks(blocks).wordCount,
+      pageCount: pageCount,
+      hasTextLayer: hasText,
+      processingVersion: _kProcessingVersion,
+      importedAt: DateTime.now(),
+    );
+    final list = state.valueOrNull ?? await _readIndex();
+    final next = [updated, ...list.where((x) => x.id != e.id)];
+    await _writeIndex(next);
+    state = AsyncData(next);
+    return updated;
+  }
+
+  /// Stable content fingerprint (sampled FNV-1a) used to de-duplicate imports.
+  String _contentHash(List<int> bytes) {
+    const prime = 0x100000001b3;
+    var h = 0xcbf29ce484222325;
+    final n = bytes.length;
+    final step = n <= 1048576 ? 1 : (n ~/ 1048576) + 1;
+    for (var i = 0; i < n; i += step) {
+      h = (h ^ bytes[i]) * prime;
+    }
+    h = (h ^ n) * prime;
+    return '$n:${h.toRadixString(16)}';
   }
 
   /// Render each page (native PdfRenderer) and OCR it into body blocks.
@@ -178,6 +298,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     String? originalPath,
     List<int>? pdfBytes,
     int pageCount = 0,
+    String contentHash = '',
   }) async {
     final root = _root;
     if (root == null) throw const ImportException('Storage is not available.');
@@ -204,6 +325,8 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       originalPath: originalPath,
       hasTextLayer: hasTextLayer,
       pdfPath: pdfPath,
+      contentHash: contentHash,
+      processingVersion: _kProcessingVersion,
     );
     final current = state.valueOrNull ?? await _readIndex();
     final next = [entry, ...current];

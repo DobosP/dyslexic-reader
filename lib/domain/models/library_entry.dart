@@ -83,6 +83,8 @@ class LibraryEntry {
     this.ttsCharOffset = 0,
     this.bookmarks = const [],
     this.notes = const [],
+    this.contentHash = '',
+    this.processingVersion = 0,
   });
 
   final String id;
@@ -112,27 +114,42 @@ class LibraryEntry {
   /// User notes anchored to character ranges.
   final List<Note> notes;
 
+  /// Stable fingerprint of the source file, used to de-duplicate imports.
+  final String contentHash;
+
+  /// Which version of the extraction/OCR pipeline produced the cached blocks.
+  final int processingVersion;
+
   LibraryEntry copyWith({
+    String? title,
+    int? wordCount,
+    int? pageCount,
+    DateTime? importedAt,
+    bool? hasTextLayer,
     int? readingCharOffset,
     int? ttsCharOffset,
     List<Bookmark>? bookmarks,
     List<Note>? notes,
+    String? contentHash,
+    int? processingVersion,
   }) =>
       LibraryEntry(
         id: id,
-        title: title,
+        title: title ?? this.title,
         source: source,
         cacheBlocksPath: cacheBlocksPath,
-        wordCount: wordCount,
-        pageCount: pageCount,
-        importedAt: importedAt,
+        wordCount: wordCount ?? this.wordCount,
+        pageCount: pageCount ?? this.pageCount,
+        importedAt: importedAt ?? this.importedAt,
         originalPath: originalPath,
-        hasTextLayer: hasTextLayer,
+        hasTextLayer: hasTextLayer ?? this.hasTextLayer,
         pdfPath: pdfPath,
         readingCharOffset: readingCharOffset ?? this.readingCharOffset,
         ttsCharOffset: ttsCharOffset ?? this.ttsCharOffset,
         bookmarks: bookmarks ?? this.bookmarks,
         notes: notes ?? this.notes,
+        contentHash: contentHash ?? this.contentHash,
+        processingVersion: processingVersion ?? this.processingVersion,
       );
 
   Map<String, dynamic> toJson() => {
@@ -150,6 +167,8 @@ class LibraryEntry {
         'ttsCharOffset': ttsCharOffset,
         'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
         'notes': notes.map((n) => n.toJson()).toList(),
+        'contentHash': contentHash,
+        'processingVersion': processingVersion,
       };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> j) => LibraryEntry(
@@ -177,6 +196,8 @@ class LibraryEntry {
             .cast<Map<String, dynamic>>()
             .map(Note.fromJson)
             .toList(),
+        contentHash: j['contentHash'] as String? ?? '',
+        processingVersion: (j['processingVersion'] as num?)?.toInt() ?? 0,
       );
 
   static String encodeList(List<LibraryEntry> entries) =>
