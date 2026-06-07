@@ -52,6 +52,7 @@ class ReadingPrefs {
     this.sentencePacing = false,
     this.readingWpm = 180,
     this.highlightMaxRows = 2,
+    this.readerContinuous = false,
   });
 
   final ReadingFontFamily fontFamily;
@@ -89,6 +90,9 @@ class ReadingPrefs {
   /// How many rendered rows the smart highlight spans at once (1, 2, or 3).
   final int highlightMaxRows;
 
+  /// Continuous scrolling text instead of fixed pages.
+  final bool readerContinuous;
+
   // --- Derived values used by the renderer ---
   double get letterSpacingPx => letterSpacingEm * fontSizeSp;
   double get wordSpacingPx => wordSpacingEm * fontSizeSp;
@@ -111,6 +115,7 @@ class ReadingPrefs {
     bool? sentencePacing,
     double? readingWpm,
     int? highlightMaxRows,
+    bool? readerContinuous,
   }) {
     return ReadingPrefs(
       fontFamily: fontFamily ?? this.fontFamily,
@@ -125,6 +130,7 @@ class ReadingPrefs {
       sentencePacing: sentencePacing ?? this.sentencePacing,
       readingWpm: readingWpm ?? this.readingWpm,
       highlightMaxRows: highlightMaxRows ?? this.highlightMaxRows,
+      readerContinuous: readerContinuous ?? this.readerContinuous,
     );
   }
 
@@ -141,6 +147,7 @@ class ReadingPrefs {
         'sentencePacing': sentencePacing,
         'readingWpm': readingWpm,
         'highlightMaxRows': highlightMaxRows,
+        'readerContinuous': readerContinuous,
       };
 
   factory ReadingPrefs.fromJson(Map<String, dynamic> j) {
@@ -159,6 +166,7 @@ class ReadingPrefs {
       readingWpm: _toDouble(j['readingWpm'], d.readingWpm),
       highlightMaxRows:
           (j['highlightMaxRows'] as num?)?.toInt() ?? d.highlightMaxRows,
+      readerContinuous: j['readerContinuous'] as bool? ?? d.readerContinuous,
     );
   }
 

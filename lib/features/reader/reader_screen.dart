@@ -352,10 +352,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 noteRanges: [for (final n in notes) (n.start, n.end)],
                 noteColor: palette.accent,
                 onTextTap: entry == null ? null : _onTextTap,
+                continuous: prefs.readerContinuous,
               ),
             ),
             if (_playing) _ttsBar(palette),
-            _PageBar(controller: _pageCtrl, palette: palette),
+            if (!prefs.readerContinuous)
+              _PageBar(controller: _pageCtrl, palette: palette),
           ],
         ),
       ),
@@ -475,84 +477,72 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   void _openNoteSheet(String id, int start, int end, Note? existing) {
     final controller = TextEditingController(text: existing?.text ?? '');
     final palette = paletteFor(ref.read(readingPrefsProvider).themeId);
-    showModalBottomSheet<void>(
+    showDialog<void>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Note', style: Theme.of(sheetCtx).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              _snippet(start),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontStyle: FontStyle.italic,
-                color: palette.onBackground.withValues(alpha: 0.7),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              minLines: 2,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                hintText: 'Write a note for this sentence…',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (existing != null)
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.of(sheetCtx).pop();
-                      ref
-                          .read(libraryControllerProvider.notifier)
-                          .removeNote(id, existing);
-                    },
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Delete'),
-                  ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: () {
-                    final text = controller.text.trim();
-                    Navigator.of(sheetCtx).pop();
-                    final notifier =
-                        ref.read(libraryControllerProvider.notifier);
-                    if (text.isEmpty) {
-                      if (existing != null) notifier.removeNote(id, existing);
-                      return;
-                    }
-                    notifier.upsertNote(
-                      id,
-                      Note(
-                        start: start,
-                        end: end,
-                        text: text,
-                        createdAt: DateTime.now(),
-                      ),
-                    );
-                  },
-                  child: const Text('Save'),
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Note'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _snippet(start),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontStyle: FontStyle.italic,
+                  color: palette.onBackground.withValues(alpha: 0.7),
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 6,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Write a note for this sentence…',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
         ),
+        actions: [
+          if (existing != null)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(dialogCtx).pop();
+                ref
+                    .read(libraryControllerProvider.notifier)
+                    .removeNote(id, existing);
+              },
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final text = controller.text.trim();
+              Navigator.of(dialogCtx).pop();
+              final notifier = ref.read(libraryControllerProvider.notifier);
+              if (text.isEmpty) {
+                if (existing != null) notifier.removeNote(id, existing);
+                return;
+              }
+              notifier.upsertNote(
+                id,
+                Note(start: start, end: end, text: text, createdAt: DateTime.now()),
+              );
+            },
+            child: const Text('Save'),
+          ),
+        ],
       ),
     ).whenComplete(controller.dispose);
   }

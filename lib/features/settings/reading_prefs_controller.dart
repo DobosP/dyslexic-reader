@@ -28,6 +28,8 @@ class ReadingPrefsController extends Notifier<ReadingPrefs> {
   void setReadingWpm(double v) => _update(state.copyWith(readingWpm: v));
   void setHighlightMaxRows(int v) =>
       _update(state.copyWith(highlightMaxRows: v));
+  void setReaderContinuous(bool v) =>
+      _update(state.copyWith(readerContinuous: v));
   void reset() => _update(const ReadingPrefs());
 }
 

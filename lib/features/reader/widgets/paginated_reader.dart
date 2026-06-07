@@ -114,6 +114,7 @@ class PaginatedReader extends StatefulWidget {
     this.noteRanges = const [],
     this.onTextTap,
     this.noteColor,
+    this.continuous = false,
   });
 
   final ReadingDocument document;
@@ -140,6 +141,9 @@ class PaginatedReader extends StatefulWidget {
   final void Function(int start, int end)? onTextTap;
   final Color? noteColor;
 
+  /// Continuous scroll (one paragraph per item) instead of fixed pages.
+  final bool continuous;
+
   @override
   State<PaginatedReader> createState() => _PaginatedReaderState();
 }
@@ -164,6 +168,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
 
   double _vh = 0;
   double _cw = 1;
+  double _itemVPad = _vPad;
   TextScaler _ts = const TextScaler.linear(1);
 
   @override
@@ -309,7 +314,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       final tops = <double>[];
       final chunks = <List<Chunk>>[];
       final cums = <List<double>>[];
-      var acc = _vPad;
+      var acc = _itemVPad;
       for (var i = 0; i < page.paragraphs.length; i++) {
         final para = page.paragraphs[i];
         if (i > 0) {
@@ -379,6 +384,10 @@ class _PaginatedReaderState extends State<PaginatedReader> {
   }
 
   void _ensureVisible(int offset) {
+    if (widget.continuous) {
+      _ensureVisibleContinuous(offset);
+      return;
+    }
     _ensureComputedForOffset(offset);
     final page = Paginator.pageForOffset(_pages, offset);
     final onScreen = _itemPositions.itemPositions.value.any(
@@ -386,6 +395,46 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     );
     if (onScreen) return;
     _animateToPage(page);
+  }
+
+  /// Keep the current chunk comfortably in view (also handles paragraphs taller
+  /// than the viewport): scroll only when it drifts out of a comfort band.
+  void _ensureVisibleContinuous(int offset) {
+    if (_pages.isEmpty || _vh <= 0) return;
+    final page = Paginator.pageForOffset(_pages, offset).clamp(0, _pages.length - 1);
+    final top = _offsetTopInItem(page, offset);
+    for (final p in _itemPositions.itemPositions.value) {
+      if (p.index == page) {
+        final frac = p.itemLeadingEdge + top / _vh;
+        if (frac >= 0.12 && frac <= 0.82) return; // already comfortable
+        break;
+      }
+    }
+    final align = (0.18 - top / _vh).clamp(0.0, 1.0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_itemScroll.isAttached) return;
+      _itemScroll.scrollTo(
+        index: page,
+        alignment: align,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  /// Vertical px from an item's top to the chunk containing [offset].
+  double _offsetTopInItem(int pageIndex, int offset) {
+    final m = _metricsFor(pageIndex, _pages[pageIndex]);
+    for (var pi = 0; pi < m.chunks.length; pi++) {
+      final chunks = m.chunks[pi];
+      final cum = m.chunkCumHeight[pi];
+      for (var k = 0; k < chunks.length; k++) {
+        if (offset < chunks[k].$2) {
+          return m.paragraphTop[pi] + (k > 0 ? cum[k - 1] : 0.0);
+        }
+      }
+    }
+    return m.paragraphTop.isNotEmpty ? m.paragraphTop.first : _itemVPad;
   }
 
   void _animateToPage(int page) {
@@ -396,7 +445,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
       if (!mounted || !_itemScroll.isAttached) return;
       _itemScroll.scrollTo(
         index: target,
-        alignment: 0.15,
+        alignment: widget.continuous ? 0.08 : 0.0,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
@@ -436,6 +485,18 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     if (!p.hasMore) _complete = true;
   }
 
+  /// Continuous mode: one item per document paragraph (no fixed pages).
+  List<ReaderPage> _continuousPages(ReadingDocument doc) => [
+        for (final p in doc.paragraphs)
+          ReaderPage(
+            paragraphs: [
+              PageParagraph(words: p.words, start: p.start, end: p.end, role: p.role),
+            ],
+            start: p.start,
+            end: p.end,
+          ),
+      ];
+
   void _startBackgroundFill(int gen) {
     Future(() async {
       final p = _paginator;
@@ -468,6 +529,9 @@ class _PaginatedReaderState extends State<PaginatedReader> {
         _vh = constraints.maxHeight;
         _cw = colWidth;
         _ts = scaler;
+        _itemVPad = widget.continuous
+            ? (widget.paragraphSpacing / 2).clamp(4.0, 20.0)
+            : _vPad;
 
         final signature = [
           identityHashCode(widget.document),
@@ -478,9 +542,10 @@ class _PaginatedReaderState extends State<PaginatedReader> {
           widget.style.fontFamily,
           widget.bionic,
           colWidth.floor(),
-          pageHeight.floor(),
+          widget.continuous ? 0 : pageHeight.floor(),
           widget.paragraphSpacing.floor(),
           widget.highlightMaxRows,
+          widget.continuous,
         ].join('|');
 
         if (signature != _signature) {
@@ -488,23 +553,29 @@ class _PaginatedReaderState extends State<PaginatedReader> {
           _generation++;
           _metricsCache.clear();
           final gen = _generation;
-          _paginator = LazyPaginator(
-            doc: widget.document,
-            maxHeight: pageHeight,
-            paragraphSpacing: widget.paragraphSpacing,
-            measure: (text, role) =>
-                _measure(text, styleForRole(role, widget.style), colWidth, scaler),
-          );
-          _pages = [];
-          _complete = false;
-          _ensureComputedForOffset(_targetOffset);
+          if (widget.continuous) {
+            _paginator = null;
+            _pages = _continuousPages(widget.document);
+            _complete = true;
+          } else {
+            _paginator = LazyPaginator(
+              doc: widget.document,
+              maxHeight: pageHeight,
+              paragraphSpacing: widget.paragraphSpacing,
+              measure: (text, role) =>
+                  _measure(text, styleForRole(role, widget.style), colWidth, scaler),
+            );
+            _pages = [];
+            _complete = false;
+            _ensureComputedForOffset(_targetOffset);
+          }
           _initialIndex = Paginator.pageForOffset(_pages, _targetOffset);
           _topIndex = _initialIndex;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted || gen != _generation) return;
             if (_itemScroll.isAttached) _itemScroll.jumpTo(index: _initialIndex);
             _notify(_initialIndex);
-            _startBackgroundFill(gen);
+            if (!widget.continuous) _startBackgroundFill(gen);
           });
         }
 
@@ -529,7 +600,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
             paragraphSpacing: widget.paragraphSpacing,
             bionic: widget.bionic,
             horizontalPadding: _hPad,
-            verticalPadding: _vPad,
+            verticalPadding: _itemVPad,
             highlight: widget.highlight,
             noteRanges: widget.noteRanges,
             noteColor: widget.noteColor,

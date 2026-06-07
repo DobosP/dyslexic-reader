@@ -159,6 +159,26 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Text layout', style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('In page')),
+                    ButtonSegment(value: true, label: Text('Continuous')),
+                  ],
+                  selected: {prefs.readerContinuous},
+                  onSelectionChanged: (s) => c.setReaderContinuous(s.first),
+                  showSelectedIcon: false,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
