@@ -10,6 +10,7 @@ import '../../domain/structure/document_structure.dart';
 import '../library/library_controller.dart';
 import '../settings/reading_prefs_controller.dart';
 import '../settings/settings_screen.dart';
+import 'notes_screens.dart';
 import 'original_pdf_screen.dart';
 import 'widgets/outline_drawer.dart';
 import 'widgets/paginated_reader.dart';
@@ -471,137 +472,26 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         break;
       }
     }
-    _openNoteSheet(entry.id, start, end, existing);
-  }
-
-  void _openNoteSheet(String id, int start, int end, Note? existing) {
-    final controller = TextEditingController(text: existing?.text ?? '');
-    final palette = paletteFor(ref.read(readingPrefsProvider).themeId);
-    showDialog<void>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Note'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _snippet(start),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                  color: palette.onBackground.withValues(alpha: 0.7),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                minLines: 3,
-                maxLines: 6,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  hintText: 'Write a note for this sentence…',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          if (existing != null)
-            TextButton.icon(
-              onPressed: () {
-                Navigator.of(dialogCtx).pop();
-                ref
-                    .read(libraryControllerProvider.notifier)
-                    .removeNote(id, existing);
-              },
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Delete'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              Navigator.of(dialogCtx).pop();
-              final notifier = ref.read(libraryControllerProvider.notifier);
-              if (text.isEmpty) {
-                if (existing != null) notifier.removeNote(id, existing);
-                return;
-              }
-              notifier.upsertNote(
-                id,
-                Note(start: start, end: end, text: text, createdAt: DateTime.now()),
-              );
-            },
-            child: const Text('Save'),
-          ),
-        ],
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => NoteEditorScreen(
+        entryId: entry.id,
+        start: start,
+        end: end,
+        snippet: _snippet(start),
+        initialText: existing?.text ?? '',
+        isEditing: existing != null,
       ),
-    ).whenComplete(controller.dispose);
+    ));
   }
 
-  void _showNotes(String id) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Notes'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Consumer(
-            builder: (context, ref, _) {
-              final list = ref.watch(libraryControllerProvider).valueOrNull ?? const [];
-              LibraryEntry? entry;
-              for (final e in list) {
-                if (e.id == id) entry = e;
-              }
-              final notes = entry?.notes ?? const <Note>[];
-              if (notes.isEmpty) {
-                return const Text('No notes yet. Long-press a sentence to add one.');
-              }
-              return ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final n in notes)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.sticky_note_2_outlined),
-                      title: Text(n.text, maxLines: 3, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(
-                        '"${_snippet(n.start)}"',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => ref
-                            .read(libraryControllerProvider.notifier)
-                            .removeNote(id, n),
-                      ),
-                      onTap: () {
-                        Navigator.of(dialogCtx).pop();
-                        _pageCtrl.jumpToOffset(n.start);
-                      },
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
+  Future<void> _showNotes(String id) async {
+    final offset = await Navigator.of(context).push<int>(
+      MaterialPageRoute<int>(
+        builder: (_) => NotesListScreen(entryId: id, snippetFor: _snippet),
       ),
     );
+    if (!mounted || offset == null) return;
+    _pageCtrl.jumpToOffset(offset);
   }
 
   void _quickSize() {
