@@ -217,39 +217,34 @@ class _PaginatedReaderState extends State<PaginatedReader> {
     }
   }
 
-  /// The ≤2-line chunk at the reading line (~⅓ down the viewport).
+  /// The chunk whose vertical centre is nearest the reading line (~⅓ down the
+  /// viewport), scanning every visible chunk so a page boundary never skips the
+  /// last chunk of a page.
   Chunk? _readingLineChunk(Iterable<ItemPosition> positions) {
     const band = 0.3;
     if (_vh <= 0) return null;
-    ItemPosition? at;
+    Chunk? best;
+    var bestDist = double.infinity;
     for (final p in positions) {
-      if (p.itemLeadingEdge <= band && p.itemTrailingEdge > band) {
-        at = p;
-        break;
+      if (p.index < 0 || p.index >= _pages.length) continue;
+      if (p.itemTrailingEdge <= 0 || p.itemLeadingEdge >= 1) continue;
+      final m = _metricsFor(p.index, _pages[p.index]);
+      for (var pi = 0; pi < m.chunks.length; pi++) {
+        final chunks = m.chunks[pi];
+        final cum = m.chunkCumHeight[pi];
+        for (var k = 0; k < chunks.length; k++) {
+          final topPx = m.paragraphTop[pi] + (k > 0 ? cum[k - 1] : 0.0);
+          final botPx = m.paragraphTop[pi] + cum[k];
+          final centerFrac = p.itemLeadingEdge + ((topPx + botPx) / 2) / _vh;
+          final dist = (centerFrac - band).abs();
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = chunks[k];
+          }
+        }
       }
     }
-    at ??= positions.reduce((a, b) => a.index < b.index ? a : b);
-    final pageIndex = at.index.clamp(0, _pages.length - 1);
-    final page = _pages[pageIndex];
-    if (page.paragraphs.isEmpty) return null;
-
-    final m = _metricsFor(pageIndex, page);
-    final target = (band - at.itemLeadingEdge) * _vh;
-    var pi = 0;
-    for (var i = 0; i < m.paragraphTop.length; i++) {
-      if (m.paragraphTop[i] <= target) {
-        pi = i;
-      } else {
-        break;
-      }
-    }
-    final sub = target - m.paragraphTop[pi];
-    final chunks = m.chunks[pi];
-    final cum = m.chunkCumHeight[pi];
-    for (var k = 0; k < cum.length; k++) {
-      if (cum[k] >= sub) return chunks[k];
-    }
-    return chunks.isNotEmpty ? chunks.last : null;
+    return best;
   }
 
   Chunk? _chunkAt(int offset) {

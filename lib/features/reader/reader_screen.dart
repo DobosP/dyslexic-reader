@@ -548,49 +548,58 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   void _showNotes(String id) {
-    showModalBottomSheet<void>(
+    showDialog<void>(
       context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => Consumer(
-        builder: (context, ref, _) {
-          final list = ref.watch(libraryControllerProvider).valueOrNull ?? const [];
-          LibraryEntry? entry;
-          for (final e in list) {
-            if (e.id == id) entry = e;
-          }
-          final notes = entry?.notes ?? const <Note>[];
-          if (notes.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No notes yet. Long-press a sentence to add one.'),
-            );
-          }
-          return ListView(
-            shrinkWrap: true,
-            children: [
-              for (final n in notes)
-                ListTile(
-                  leading: const Icon(Icons.sticky_note_2_outlined),
-                  title: Text(n.text, maxLines: 3, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(
-                    '"${_snippet(n.start)}"',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => ref
-                        .read(libraryControllerProvider.notifier)
-                        .removeNote(id, n),
-                  ),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _pageCtrl.jumpToOffset(n.start);
-                  },
-                ),
-            ],
-          );
-        },
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Notes'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Consumer(
+            builder: (context, ref, _) {
+              final list = ref.watch(libraryControllerProvider).valueOrNull ?? const [];
+              LibraryEntry? entry;
+              for (final e in list) {
+                if (e.id == id) entry = e;
+              }
+              final notes = entry?.notes ?? const <Note>[];
+              if (notes.isEmpty) {
+                return const Text('No notes yet. Long-press a sentence to add one.');
+              }
+              return ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final n in notes)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.sticky_note_2_outlined),
+                      title: Text(n.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        '"${_snippet(n.start)}"',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => ref
+                            .read(libraryControllerProvider.notifier)
+                            .removeNote(id, n),
+                      ),
+                      onTap: () {
+                        Navigator.of(dialogCtx).pop();
+                        _pageCtrl.jumpToOffset(n.start);
+                      },
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
