@@ -30,6 +30,6 @@ void main() {
 
     expect(find.text('Dyslexic Reader'), findsOneWidget);
     expect(find.text('Read the sample'), findsOneWidget);
-    expect(find.text('Open a PDF or text file'), findsOneWidget);
+    expect(find.text('Open a document'), findsOneWidget);
   });
 }
