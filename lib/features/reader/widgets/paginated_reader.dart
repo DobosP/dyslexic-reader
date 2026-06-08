@@ -600,6 +600,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
             noteRanges: widget.noteRanges,
             noteColor: widget.noteColor,
             onTextTap: widget.onTextTap,
+            textScaler: scaler,
           ),
         );
       },
@@ -632,6 +633,7 @@ class _PageBody extends StatelessWidget {
     required this.noteRanges,
     required this.noteColor,
     required this.onTextTap,
+    required this.textScaler,
   });
 
   final ReaderPage page;
@@ -645,6 +647,7 @@ class _PageBody extends StatelessWidget {
   final List<(int, int)> noteRanges;
   final Color? noteColor;
   final void Function(int start, int end)? onTextTap;
+  final TextScaler textScaler;
 
   @override
   Widget build(BuildContext context) {
@@ -668,7 +671,7 @@ class _PageBody extends StatelessWidget {
                         ? paragraphSpacing
                         : paragraphSpacing * 1.8,
                   ),
-                _wrap(context, page.paragraphs[i]),
+                _wrap(page.paragraphs[i]),
               ],
             ],
           ),
@@ -677,13 +680,13 @@ class _PageBody extends StatelessWidget {
     );
   }
 
-  Widget _wrap(BuildContext context, PageParagraph p) {
+  Widget _wrap(PageParagraph p) {
     final body = _paragraph(p);
     final cb = onTextTap;
     if (cb == null) return body;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPressStart: (d) => _handleLongPress(context, p, d.localPosition),
+      onLongPressStart: (d) => _handleLongPress(p, d.localPosition),
       child: body,
     );
   }
@@ -717,7 +720,7 @@ class _PageBody extends StatelessWidget {
   }
 
   /// Map a long-press location to the sentence under it and report its range.
-  void _handleLongPress(BuildContext context, PageParagraph p, Offset localPos) {
+  void _handleLongPress(PageParagraph p, Offset localPos) {
     final cb = onTextTap;
     if (cb == null || p.words.isEmpty) return;
     final painter = TextPainter(
@@ -727,7 +730,7 @@ class _PageBody extends StatelessWidget {
         bionic: bionic && p.role == BlockRole.body,
       ),
       textDirection: TextDirection.ltr,
-      textScaler: MediaQuery.textScalerOf(context),
+      textScaler: textScaler,
     )..layout(maxWidth: columnWidth);
     final index = painter.getPositionForOffset(localPos).offset;
     painter.dispose();
