@@ -35,13 +35,15 @@
                 <data android:scheme="file"/>
                 <data android:mimeType="application/pdf"/>
                 <data android:mimeType="text/plain"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
             </intent-filter>
-            <!-- Share-to: PDFs and text shared from other apps -->
+            <!-- Share-to: PDFs, Word and text shared from other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="application/pdf"/>
                 <data android:mimeType="text/plain"/>
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

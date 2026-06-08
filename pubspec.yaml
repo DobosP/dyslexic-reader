@@ -26,6 +26,9 @@ dependencies:
       ref: bd1cce917e914690c00cc138b000b728742dde2b
   # On-device text-to-speech (system voices) for read-aloud.
   flutter_tts: ^4.2.5
+  # Word (.docx) import: unzip the archive and parse word/document.xml.
+  archive: ^3.6.1
+  xml: ^6.5.0
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,7 @@ enum DocSource {
   sampleText('Sample'),
   pasted('Pasted'),
   pdf('PDF'),
+  docx('Word document'),
   txt('Text file');
 
   const DocSource(this.label);

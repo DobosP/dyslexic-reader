@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:xml/xml.dart';
 
 import '../../core/platform/pdf_text_channel.dart';
 import '../../data/services/ocr_service.dart';
@@ -89,8 +92,12 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   Future<XFile?> pickFile() async {
     const group = XTypeGroup(
       label: 'Documents',
-      extensions: ['pdf', 'txt'],
-      mimeTypes: ['application/pdf', 'text/plain'],
+      extensions: ['pdf', 'txt', 'docx'],
+      mimeTypes: [
+        'application/pdf',
+        'text/plain',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ],
     );
     return openFile(acceptedTypeGroups: [group]);
   }
@@ -153,6 +160,21 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       );
     }
 
+    if (ext == 'docx') {
+      final blocks = _docxBlocks(bytes);
+      if (blocks.isEmpty) {
+        throw const ImportException('Could not read text from this Word document.');
+      }
+      return _store(
+        title: title,
+        blocks: blocks,
+        source: DocSource.docx,
+        hasTextLayer: true,
+        originalPath: path,
+        contentHash: hash,
+      );
+    }
+
     final text = await file.readAsString();
     return _store(
       title: title,
@@ -162,6 +184,45 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       originalPath: path,
       contentHash: hash,
     );
+  }
+
+  /// Extract paragraphs (with heading styles) from a .docx archive's
+  /// word/document.xml. Returns empty if the file isn't a readable .docx.
+  List<TextBlock> _docxBlocks(List<int> bytes) {
+    try {
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final entry = archive.findFile('word/document.xml');
+      if (entry == null) return const [];
+      final xml = XmlDocument.parse(
+        utf8.decode(entry.content as List<int>, allowMalformed: true),
+      );
+      final blocks = <TextBlock>[];
+      for (final p in xml.findAllElements('p', namespace: '*')) {
+        final buf = StringBuffer();
+        for (final t in p.findAllElements('t', namespace: '*')) {
+          buf.write(t.innerText);
+        }
+        final text = buf.toString().trim();
+        if (text.isEmpty) continue;
+        var style = '';
+        for (final s in p.findAllElements('pStyle', namespace: '*')) {
+          style = s.getAttribute('val', namespace: '*') ?? '';
+          break;
+        }
+        blocks.add(TextBlock(role: _docxRole(style), text: text));
+      }
+      return blocks;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  BlockRole _docxRole(String style) {
+    final s = style.toLowerCase().replaceAll(' ', '');
+    if (s == 'title' || s == 'heading1') return BlockRole.h1;
+    if (s == 'subtitle' || s == 'heading2') return BlockRole.h2;
+    if (s.startsWith('heading')) return BlockRole.h3;
+    return BlockRole.body;
   }
 
   /// Re-run extraction/OCR for an existing document and open the refreshed
@@ -211,6 +272,9 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
         blocks = await _ocrPdf(path, res.pageCount, onProgress);
         hasText = blocks.isNotEmpty;
       }
+    } else if (e.source == DocSource.docx) {
+      blocks = _docxBlocks(await File(path).readAsBytes());
+      hasText = blocks.isNotEmpty;
     } else {
       blocks = Tokenizer.blocksFromText(await File(path).readAsString());
     }

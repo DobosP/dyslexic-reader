@@ -230,8 +230,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           const SizedBox(height: 24),
           _ActionCard(
             icon: Icons.file_open_outlined,
-            title: 'Open a PDF or text file',
-            subtitle: 'Import a .pdf or .txt from your device',
+            title: 'Open a document',
+            subtitle: 'Import a PDF, Word (.docx), or text file',
             onTap: _pickAndImport,
           ),
           _ActionCard(
