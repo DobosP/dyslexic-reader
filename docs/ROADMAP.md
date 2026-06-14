@@ -42,12 +42,19 @@ Redefined with the product owner. Building in this order:
 - [ ] **Manual highlighting**: finger-select text, colored highlights saved per
       book, revisitable list  *(queued)*
 - [ ] **AI summary**: whole-book / per-chapter summaries  *(parked — revisit cloud powering + API key)*
-- [ ] **Read-aloud + word highlighting** (original plan): native `TextToSpeech`
-      + `onRangeStart`, sentence-level fallback  *(parked)*
+- [x] **Read-aloud (text-to-speech)**: chunk-level highlight synced to playback,
+      ±15s skip, resume where paused, in-reader speed control (`flutter_tts`)
+- [x] **Read-aloud voice picker** + speed + pitch (`flutter_tts` getVoices)
+- [x] **Word-level highlight sync**: the spoken word is highlighted inside the
+      chunk band via `flutter_tts` `setProgressHandler` (graceful fallback to
+      chunk-level on engines without word boundaries)
+- [x] **In-document search**: case-insensitive, match count + next/prev, jump &
+      flash; reader app bar consolidated (primary actions + overflow menu)
 
-## Phase 3 — Reading ruler / line focus
-- [ ] Ruler styles: bar / lightbox / shade / underline (CHI-2023 set)
-- [ ] Follows scroll and the current read-aloud line
+## Phase 3 — Reading ruler / line focus ✅
+- [x] Ruler styles: tint bar / underline / shade / spotlight (CHI-2023 set)
+- [x] Draggable focus band; text scrolls underneath (typoscope)
+- [ ] Auto-follow the current read-aloud line — *fast-follow 1.1*
 
 ## Phase 4 — OCR + multilingual
 - [ ] `google_mlkit_text_recognition` for scanned/image PDFs (auto-detect no text layer)

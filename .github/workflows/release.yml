@@ -1,0 +1,96 @@
+name: release
+
+# Continuous deployment to Google Play.
+#
+# Publishes a signed Android App Bundle to a Play track whenever you push/merge
+# to the `release` branch (and on manual dispatch, where you can pick the track).
+#
+# It only uploads when BOTH sets of secrets are configured (otherwise it just
+# builds and tells you what's missing), so the workflow is safe to commit before
+# the Play account exists. See docs/PUBLISHING.md §"Automated deployment (CD)"
+# for the one-time setup (upload keystore, Play service account, first manual
+# upload — which Google requires before the API will accept uploads).
+
+on:
+  push:
+    branches: ["release"]
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play track to publish to"
+        type: choice
+        default: internal
+        options: [internal, alpha, beta, production]
+
+concurrency:
+  group: play-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      # Override with a repo variable if you uploaded a higher versionCode by
+      # hand first; versionCode must strictly exceed the highest on the track.
+      VERSION_CODE_OFFSET: ${{ vars.VERSION_CODE_OFFSET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Fail early if release secrets are missing
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 == '' || env.PLAY_SERVICE_ACCOUNT_JSON == '' }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then echo "::error::Missing upload-keystore secrets (ANDROID_KEYSTORE_BASE64 etc.)"; fi
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then echo "::error::Missing PLAY_SERVICE_ACCOUNT_JSON"; fi
+          echo "See docs/PUBLISHING.md (Automated deployment / CD) for one-time setup."
+          exit 1
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Configure release signing
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Compute versionCode
+        id: ver
+        run: echo "code=$(( ${VERSION_CODE_OFFSET:-0} + ${{ github.run_number }} ))" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed App Bundle
+        run: flutter build appbundle --release --build-number=${{ steps.ver.outputs.code }}
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.dobosp.dyslexic_reader
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: ${{ github.event.inputs.track || vars.PLAY_TRACK || 'internal' }}
+          status: completed
+          whatsNewDirectory: distribution/whatsnew

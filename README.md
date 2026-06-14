@@ -22,13 +22,24 @@ private); optional cloud upgrades later.
 | [`docs/RESEARCH.md`](docs/RESEARCH.md) | Evidence base, competitive teardown (Speechify, Immersive Reader, open-source refs), and the technical building blocks — with sources. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The technical blueprint: Flutter + native bridges, the document pipeline, project structure, platform channels, persistence, deployment. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phased build plan and current status. |
+| [`docs/PUBLISHING.md`](docs/PUBLISHING.md) | Zero-to-published Google Play guide: account, signing, `.aab`, hosting the policy, closed-testing gate, pre-launch checklist. |
+| [`docs/STORE_LISTING.md`](docs/STORE_LISTING.md) | Copy-paste Play listing: title, descriptions, Data Safety answers, content rating, assets. |
+| [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) | The privacy policy (host this URL and link it in Play Console; also shown in-app). |
 
 ## Status
 
-**Phase 0 — foundation (current):** a working, deployable plain-text reader with
-adjustable spacing/typography/themes and an optional bionic toggle, plus CI that
-produces a signed APK. PDF import, read-aloud, OCR, and the reading ruler land in
-later phases (see the roadmap).
+**Launch-candidate (v1.0).** A complete, deployable reader: import **PDF / Word
+(.docx) / text** (and paste), reflow into an adjustable surface
+(spacing/fonts/themes), on-device **OCR** for scanned PDFs, **read-aloud** with
+synced highlighting + voice/speed/pitch controls, a draggable **reading ruler**
+(4 styles), a scroll-linked reading guide, pagination or continuous scroll,
+bookmarks, notes, and a document outline. First-run **onboarding**, an
+**About + open-source licenses** screen, a custom **adaptive launcher icon**,
+and a **TalkBack** pass are in. CI builds a signed **APK + App Bundle (.aab)**.
+
+Remaining before publishing is process, not code — see
+[`docs/PUBLISHING.md`](docs/PUBLISHING.md): create the Play account, host the
+privacy policy, capture screenshots, and run the new-account closed test.
 
 ## Project layout
 
@@ -40,8 +51,10 @@ lib/
   features/   library, reader, settings screens
 android/      Flutter Android host (native bridges added in later phases)
 assets/fonts/ bundled OFL fonts (OpenDyslexic, Atkinson Hyperlegible, Lexend)
-docs/         research + architecture + roadmap
-.github/      CI: analyze + test + build signed APK
+assets/branding/ in-app icon; tool/generate_icons.py regenerates the icon set
+docs/         research + architecture + roadmap + publishing/store/privacy
+.github/      CI (build.yml): analyze + test + build signed APK and .aab
+              CD (release.yml): publish the .aab to Google Play on merge to `release`
 ```
 
 ## Develop
