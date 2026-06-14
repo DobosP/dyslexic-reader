@@ -5,7 +5,9 @@ import '../../app/theme/reading_theme.dart';
 import '../../domain/reflow/tokenizer.dart';
 import '../../domain/models/reading_prefs.dart';
 import '../reader/widgets/reflow_text.dart';
+import 'about_screen.dart';
 import 'reading_prefs_controller.dart';
+import 'tts_voice_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -179,6 +181,69 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          const _SectionLabel('Reading ruler'),
+          Text(
+            'A focus band you can drag to keep your place — strong evidence for '
+            'dyslexic readers. Drag the grip on its right edge while reading.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final r in ReadingRulerStyle.values)
+                ChoiceChip(
+                  label: Text(r.label),
+                  selected: prefs.rulerStyle == r,
+                  onSelected: (_) => c.setRulerStyle(r),
+                ),
+            ],
+          ),
+          if (prefs.rulerStyle != ReadingRulerStyle.off) ...[
+            const SizedBox(height: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Ruler width', style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 1, label: Text('1 line')),
+                      ButtonSegment(value: 2, label: Text('2 lines')),
+                      ButtonSegment(value: 3, label: Text('3 lines')),
+                    ],
+                    selected: {prefs.rulerRows.clamp(1, 3)},
+                    onSelectionChanged: (s) => c.setRulerRows(s.first),
+                    showSelectedIcon: false,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          const _SectionLabel('Read aloud'),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text('Voice'),
+            subtitle: Text(prefs.ttsVoiceName ?? 'Device default'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const TtsVoiceScreen()),
+            ),
+          ),
+          _SliderTile(
+            label: 'Voice pitch',
+            value: prefs.ttsPitch,
+            min: 0.5,
+            max: 2.0,
+            divisions: 15,
+            display: '${prefs.ttsPitch.toStringAsFixed(1)}×',
+            onChanged: c.setTtsPitch,
+          ),
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -197,6 +262,17 @@ class SettingsScreen extends ConsumerWidget {
             ),
             value: prefs.bionicEnabled,
             onChanged: c.setBionic,
+          ),
+          const SizedBox(height: 8),
+          const Divider(),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About Dyslexic Reader'),
+            subtitle: const Text('Privacy, licenses, feedback'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+            ),
           ),
         ],
       ),

@@ -62,6 +62,43 @@ void main() {
     expect(roles.last, BlockRole.body);
   });
 
+  // Adversarial inputs the audit flagged as a possible RangeError. Each must
+  // paginate without throwing.
+  test('does not crash on a word taller than the page (forced single-word page)', () {
+    final doc = Tokenizer.parse('supercalifragilisticexpialidocious tiny a');
+    // maxHeight=1 is smaller than every word's measured height.
+    final pages =
+        Paginator.paginate(doc: doc, maxHeight: 1, paragraphSpacing: 0, measure: measure);
+    final words = [
+      for (final p in pages)
+        for (final frag in p.paragraphs)
+          for (final w in frag.words) w.text,
+    ];
+    expect(words, ['supercalifragilisticexpialidocious', 'tiny', 'a']);
+  });
+
+  test('does not crash on empty / whitespace-only documents', () {
+    for (final src in ['', '   \n\n  ', '\n']) {
+      final pages =
+          Paginator.paginate(doc: Tokenizer.parse(src), maxHeight: 10, paragraphSpacing: 0, measure: measure);
+      expect(pages, isNotEmpty); // always at least one (possibly empty) page
+    }
+  });
+
+  test('does not crash with zero or negative height budget', () {
+    final doc = Tokenizer.parse('alpha beta gamma');
+    for (final h in [0.0, -5.0]) {
+      final pages =
+          Paginator.paginate(doc: doc, maxHeight: h, paragraphSpacing: 0, measure: measure);
+      final words = [
+        for (final p in pages)
+          for (final frag in p.paragraphs)
+            for (final w in frag.words) w.text,
+      ];
+      expect(words, ['alpha', 'beta', 'gamma']);
+    }
+  });
+
   test('LazyPaginator yields pages incrementally and reports completion', () {
     final doc = Tokenizer.parse('aaa bbb ccc ddd eee fff');
     final lp = LazyPaginator(doc: doc, maxHeight: 11, paragraphSpacing: 0, measure: measure);

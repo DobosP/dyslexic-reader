@@ -19,11 +19,20 @@ class ReadingHighlight {
     this.sentenceStart = -1,
     this.sentenceEnd = -1,
     this.sentenceColor,
+    this.wordStart = -1,
+    this.wordEnd = -1,
+    this.wordColor,
   });
 
   final int sentenceStart;
   final int sentenceEnd;
   final Color? sentenceColor;
+
+  /// Tighter highlight over the word currently being read aloud (painted on top
+  /// of the chunk band). Inactive when [wordColor] is null.
+  final int wordStart;
+  final int wordEnd;
+  final Color? wordColor;
 
   static const none = ReadingHighlight();
 }
@@ -712,6 +721,9 @@ class _PageBody extends StatelessWidget {
         highlightStart: h.sentenceStart,
         highlightEnd: h.sentenceEnd,
         highlightColor: h.sentenceColor,
+        wordStart: h.wordStart,
+        wordEnd: h.wordEnd,
+        wordColor: h.wordColor,
         noteRanges: ranges,
         noteColor: noteColor,
       ),

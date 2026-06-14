@@ -29,6 +29,8 @@ dependencies:
   # Word (.docx) import: unzip the archive and parse word/document.xml.
   archive: ^3.6.1
   xml: ^6.5.0
+  # Open mailto:/https: links from the About screen (feedback, privacy policy).
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
@@ -37,6 +39,14 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/branding/app_icon.png
+    # OFL license texts, registered with LicenseRegistry (see main.dart) so the
+    # bundled fonts appear on the in-app open-source licenses page.
+    - assets/fonts/OpenDyslexic-OFL.txt
+    - assets/fonts/AtkinsonHyperlegible-OFL.txt
+    - assets/fonts/Lexend-OFL.txt
 
   # Bundled reading fonts. All SIL Open Font License (OFL); license texts live
   # alongside the files in assets/fonts/*-OFL.txt. Spacing matters more than the

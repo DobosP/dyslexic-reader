@@ -18,6 +18,25 @@ enum ReadingFontFamily {
   final String? family;
 }
 
+/// Reading-ruler / line-focus style. A focus band the reader can drag to keep
+/// their place; surrounding text is tinted or dimmed depending on the style.
+///
+/// Strong evidence base: the CHI-2023 "Digital Reading Rulers" study found all
+/// of these styles improved reading speed and comprehension, with the largest
+/// gains for dyslexic readers, and no single style preferred by everyone — so
+/// we offer the choice. (See docs/RESEARCH.md §1.)
+enum ReadingRulerStyle {
+  off('Off'),
+  bar('Tint bar'),
+  underline('Underline'),
+  shade('Shade'),
+  spotlight('Spotlight');
+
+  const ReadingRulerStyle(this.label);
+
+  final String label;
+}
+
 /// Reading background/foreground theme. Pure white is intentionally avoided
 /// (British Dyslexia Association guidance).
 enum ReadingThemeId {
@@ -53,6 +72,12 @@ class ReadingPrefs {
     this.readingWpm = 180,
     this.highlightMaxRows = 2,
     this.readerContinuous = false,
+    this.rulerStyle = ReadingRulerStyle.off,
+    this.rulerRows = 2,
+    this.rulerCenter = 0.45,
+    this.ttsVoiceName,
+    this.ttsVoiceLocale,
+    this.ttsPitch = 1.0,
   });
 
   final ReadingFontFamily fontFamily;
@@ -93,6 +118,24 @@ class ReadingPrefs {
   /// Continuous scrolling text instead of fixed pages.
   final bool readerContinuous;
 
+  /// Reading-ruler / line-focus style (off by default).
+  final ReadingRulerStyle rulerStyle;
+
+  /// How many lines tall the reading-ruler focus band is (1–4).
+  final int rulerRows;
+
+  /// Vertical position of the ruler band as a fraction of the viewport (0–1).
+  final double rulerCenter;
+
+  /// Chosen text-to-speech voice (engine voice name); null = engine default.
+  final String? ttsVoiceName;
+
+  /// BCP-47 locale of the chosen voice (paired with [ttsVoiceName]).
+  final String? ttsVoiceLocale;
+
+  /// Read-aloud pitch (0.5–2.0, 1.0 = normal).
+  final double ttsPitch;
+
   // --- Derived values used by the renderer ---
   double get letterSpacingPx => letterSpacingEm * fontSizeSp;
   double get wordSpacingPx => wordSpacingEm * fontSizeSp;
@@ -116,6 +159,13 @@ class ReadingPrefs {
     double? readingWpm,
     int? highlightMaxRows,
     bool? readerContinuous,
+    ReadingRulerStyle? rulerStyle,
+    int? rulerRows,
+    double? rulerCenter,
+    String? ttsVoiceName,
+    String? ttsVoiceLocale,
+    double? ttsPitch,
+    bool clearTtsVoice = false,
   }) {
     return ReadingPrefs(
       fontFamily: fontFamily ?? this.fontFamily,
@@ -131,6 +181,12 @@ class ReadingPrefs {
       readingWpm: readingWpm ?? this.readingWpm,
       highlightMaxRows: highlightMaxRows ?? this.highlightMaxRows,
       readerContinuous: readerContinuous ?? this.readerContinuous,
+      rulerStyle: rulerStyle ?? this.rulerStyle,
+      rulerRows: rulerRows ?? this.rulerRows,
+      rulerCenter: rulerCenter ?? this.rulerCenter,
+      ttsVoiceName: clearTtsVoice ? null : (ttsVoiceName ?? this.ttsVoiceName),
+      ttsVoiceLocale: clearTtsVoice ? null : (ttsVoiceLocale ?? this.ttsVoiceLocale),
+      ttsPitch: ttsPitch ?? this.ttsPitch,
     );
   }
 
@@ -148,6 +204,12 @@ class ReadingPrefs {
         'readingWpm': readingWpm,
         'highlightMaxRows': highlightMaxRows,
         'readerContinuous': readerContinuous,
+        'rulerStyle': rulerStyle.name,
+        'rulerRows': rulerRows,
+        'rulerCenter': rulerCenter,
+        'ttsVoiceName': ttsVoiceName,
+        'ttsVoiceLocale': ttsVoiceLocale,
+        'ttsPitch': ttsPitch,
       };
 
   factory ReadingPrefs.fromJson(Map<String, dynamic> j) {
@@ -167,6 +229,12 @@ class ReadingPrefs {
       highlightMaxRows:
           (j['highlightMaxRows'] as num?)?.toInt() ?? d.highlightMaxRows,
       readerContinuous: j['readerContinuous'] as bool? ?? d.readerContinuous,
+      rulerStyle: _enumByName(ReadingRulerStyle.values, j['rulerStyle'], d.rulerStyle),
+      rulerRows: (j['rulerRows'] as num?)?.toInt() ?? d.rulerRows,
+      rulerCenter: _toDouble(j['rulerCenter'], d.rulerCenter),
+      ttsVoiceName: j['ttsVoiceName'] as String?,
+      ttsVoiceLocale: j['ttsVoiceLocale'] as String?,
+      ttsPitch: _toDouble(j['ttsPitch'], d.ttsPitch),
     );
   }
 

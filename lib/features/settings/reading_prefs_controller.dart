@@ -30,6 +30,17 @@ class ReadingPrefsController extends Notifier<ReadingPrefs> {
       _update(state.copyWith(highlightMaxRows: v));
   void setReaderContinuous(bool v) =>
       _update(state.copyWith(readerContinuous: v));
+  void setRulerStyle(ReadingRulerStyle v) =>
+      _update(state.copyWith(rulerStyle: v));
+  void setRulerRows(int v) => _update(state.copyWith(rulerRows: v));
+  void setRulerCenter(double v) =>
+      _update(state.copyWith(rulerCenter: v.clamp(0.08, 0.92)));
+  void setTtsVoice(String? name, String? locale) => _update(
+        name == null
+            ? state.copyWith(clearTtsVoice: true)
+            : state.copyWith(ttsVoiceName: name, ttsVoiceLocale: locale),
+      );
+  void setTtsPitch(double v) => _update(state.copyWith(ttsPitch: v.clamp(0.5, 2.0)));
   void reset() => _update(const ReadingPrefs());
 }
 
