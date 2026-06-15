@@ -277,5 +277,5 @@ syllableEnabled, highlightWord/Sentence.
 
 - Offline neural TTS (sherpa_onnx) vs cloud for the "premium voice" tier (Phase 6).
 - Whether to copy imported files into app storage vs keep content‑URIs (affects "survives reboot/permissions").
-- App name & package id (`com.example.dyslexic_reader` placeholder → real id before Play).
-- Monetization (affects whether cloud tier needs accounts/billing).
+- App name & package id: **resolved** — "Dyslexic Reader" / `com.dobosp.dyslexic_reader`.
+- Monetization: **resolved** — free, no ads, no IAP (on‑device is the differentiator).
