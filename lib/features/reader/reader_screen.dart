@@ -10,6 +10,7 @@ import '../../domain/reflow/sentences.dart';
 import '../../domain/search.dart';
 import '../../domain/structure/document_structure.dart';
 import '../library/library_controller.dart';
+import '../settings/about_screen.dart';
 import '../settings/reading_prefs_controller.dart';
 import '../settings/settings_screen.dart';
 import '../settings/tts_voice_screen.dart';
@@ -47,7 +48,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   int _hlStart = -1;
   int _hlEnd = -1;
   bool _playing = false;
-  bool _helperOn = false;
   FlutterTts? _tts;
 
   // Words of the chunk currently being spoken: (spokenStart, spokenEnd,
@@ -319,21 +319,29 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     return cur;
   }
 
-  // --- Reading guide (scroll-linked highlight) ---
+  // --- Reading focus (scroll-linked "highlight line" style) ---
 
-  void _toggleHelper() {
-    setState(() => _helperOn = !_helperOn);
-    if (_helperOn) {
-      _setHighlight(_pageCtrl.chunkAt(_pageCtrl.currentOffset));
-    } else if (!_playing) {
-      _setHighlight(null);
+  /// True when the unified reading-focus aid is set to the in-text highlight
+  /// style (the other band styles are drawn by [ReadingRulerOverlay]).
+  bool get _focusHighlight =>
+      ref.read(readingPrefsProvider).rulerStyle == ReadingRulerStyle.highlight;
+
+  void _onReadingChunk(Chunk chunk) {
+    if (_playing || !_focusHighlight) return;
+    if (chunk.$1 != _hlStart || chunk.$2 != _hlEnd) {
+      _setHighlight(chunk);
     }
   }
 
-  void _onReadingChunk(Chunk chunk) {
-    if (_playing || !_helperOn) return;
-    if (chunk.$1 != _hlStart || chunk.$2 != _hlEnd) {
-      _setHighlight(chunk);
+  /// React to the reading-focus style changing: light up / clear the in-text
+  /// highlight so it matches the chosen style immediately (unless read-aloud is
+  /// driving the highlight).
+  void _onFocusStyleChanged(ReadingRulerStyle style) {
+    if (_playing) return;
+    if (style == ReadingRulerStyle.highlight) {
+      _setHighlight(_pageCtrl.chunkAt(_pageCtrl.currentOffset));
+    } else {
+      _setHighlight(null);
     }
   }
 
@@ -341,6 +349,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   Widget build(BuildContext context) {
     final prefs = ref.watch(readingPrefsProvider);
     final palette = paletteFor(prefs.themeId);
+    // Keep the in-text highlight in step with the reading-focus style.
+    ref.listen(readingPrefsProvider.select((p) => p.rulerStyle), (_, next) {
+      _onFocusStyleChanged(next);
+    });
     final entry = _liveEntry(ref.watch(libraryControllerProvider).valueOrNull);
     final notes = entry?.notes ?? const <Note>[];
     final canViewOriginal = entry?.pdfPath != null && entry!.pageCount > 0;
@@ -396,15 +408,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     initialOffset: entry?.readingCharOffset ?? 0,
                     controller: _pageCtrl,
                     highlight: _highlight,
-                    readingHelper: _helperOn,
+                    readingHelper: _focusHighlight,
                     onReadingChunk: _onReadingChunk,
                     highlightMaxRows: prefs.highlightMaxRows,
                     noteRanges: [for (final n in notes) (n.start, n.end)],
                     noteColor: palette.accent,
                     onTextTap: entry == null ? null : _onTextTap,
+                    onNoteTap: entry == null ? null : _onTextTap,
                     continuous: prefs.readerContinuous,
                   ),
-                  if (prefs.rulerStyle != ReadingRulerStyle.off)
+                  if (prefs.rulerStyle.isBand)
                     Positioned.fill(
                       child: ReadingRulerOverlay(
                         style: prefs.rulerStyle,
@@ -412,9 +425,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         bandHeight:
                             prefs.fontSizeSp * prefs.lineHeight * prefs.rulerRows + 8,
                         center: prefs.rulerCenter,
-                        onCenterChanged: (v) => ref
-                            .read(readingPrefsProvider.notifier)
-                            .setRulerCenter(v),
                       ),
                     ),
                 ],
@@ -513,6 +523,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     LibraryEntry? entry,
     bool canViewOriginal,
   ) {
+    final focusOn =
+        ref.read(readingPrefsProvider).rulerStyle != ReadingRulerStyle.off;
     return AppBar(
       backgroundColor: palette.background,
       foregroundColor: palette.onBackground,
@@ -523,38 +535,32 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           icon: const Icon(Icons.search),
           onPressed: _openSearch,
         ),
-        Semantics(
-          liveRegion: true,
-          label: _helperOn ? 'Reading guide on' : 'Reading guide off',
-          child: IconButton(
-            tooltip: _helperOn ? 'Reading guide: on' : 'Reading guide: off',
-            icon: Icon(Icons.highlight, color: _helperOn ? palette.accent : null),
-            onPressed: _toggleHelper,
-          ),
+        IconButton(
+          tooltip: 'Text & display',
+          icon: const Icon(Icons.text_fields),
+          onPressed: _textSheet,
         ),
         IconButton(
-          tooltip: 'Reading settings',
-          icon: const Icon(Icons.tune),
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-          ),
+          tooltip: 'Reading focus',
+          icon: Icon(Icons.center_focus_strong,
+              color: focusOn ? palette.accent : null),
+          onPressed: _focusSheet,
         ),
+        if (entry != null)
+          IconButton(
+            tooltip: 'Notes & bookmarks',
+            icon: const Icon(Icons.edit_note),
+            onPressed: () => _annotationsSheet(entry),
+          ),
         PopupMenuButton<String>(
           tooltip: 'More',
           onSelected: (v) => _onMenu(v, entry),
           itemBuilder: (_) => [
             _menuItem('contents', Icons.toc, 'Contents'),
-            _menuItem('size', Icons.format_size, 'Text size'),
-            if (entry != null)
-              _menuItem('bookmark_add', Icons.bookmark_add_outlined, 'Bookmark this page'),
-            if (entry != null)
-              _menuItem('bookmarks', Icons.bookmarks_outlined, 'Bookmarks'),
-            if (entry != null)
-              _menuItem('note_add', Icons.note_add_outlined, 'Add note here'),
-            if (entry != null)
-              _menuItem('notes', Icons.notes_outlined, 'View notes'),
             if (canViewOriginal)
               _menuItem('original', Icons.picture_as_pdf_outlined, 'Original pages'),
+            _menuItem('settings', Icons.tune, 'Reading settings'),
+            _menuItem('about', Icons.info_outline, 'About'),
           ],
         ),
       ],
@@ -576,16 +582,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     switch (value) {
       case 'contents':
         _scaffoldKey.currentState?.openEndDrawer();
-      case 'size':
-        _quickSize();
-      case 'bookmark_add':
-        if (entry != null) _addBookmark(entry);
-      case 'bookmarks':
-        if (entry != null) _showBookmarks(entry.id);
-      case 'note_add':
-        _addNoteHere();
-      case 'notes':
-        if (entry != null) _showNotes(entry.id);
+      case 'settings':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+        );
+      case 'about':
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+        );
       case 'original':
         if (entry?.pdfPath != null) {
           Navigator.of(context).push(MaterialPageRoute<void>(
@@ -659,10 +663,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       _searchCtrl.clear();
     });
     // Restore the reading highlight (or clear it) now the search flash is gone.
-    if (!_playing && !_helperOn) {
-      _highlight.value = ReadingHighlight.none;
-      _hlStart = -1;
-      _hlEnd = -1;
+    if (!_playing) {
+      if (_focusHighlight) {
+        _setHighlight(_pageCtrl.chunkAt(_pageCtrl.currentOffset));
+      } else {
+        _highlight.value = ReadingHighlight.none;
+        _hlStart = -1;
+        _hlEnd = -1;
+      }
     }
   }
 
@@ -812,34 +820,289 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     _pageCtrl.jumpToOffset(offset);
   }
 
-  void _quickSize() {
+  // --- Grouped quick-sheets (text · reading focus · annotations) ---
+
+  void _openFullSettings(BuildContext sheetContext) {
+    Navigator.of(sheetContext).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+    );
+  }
+
+  /// Text & display: the few most-used type controls, with a link to the rest.
+  void _textSheet() {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) => Consumer(
+      isScrollControlled: true,
+      builder: (sheetContext) => Consumer(
         builder: (context, ref, _) {
-          final size = ref.watch(readingPrefsProvider.select((p) => p.fontSizeSp));
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Text size: ${size.round()}'),
-                Slider(
-                  value: size,
-                  min: 12,
-                  max: 40,
-                  divisions: 28,
-                  label: size.round().toString(),
-                  onChanged: (v) =>
-                      ref.read(readingPrefsProvider.notifier).setFontSize(v),
+          final prefs = ref.watch(readingPrefsProvider);
+          final c = ref.read(readingPrefsProvider.notifier);
+          return _SheetBody(
+            title: 'Text & display',
+            children: [
+              const _SheetLabel('Theme'),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final t in ReadingThemeId.values)
+                    ChoiceChip(
+                      label: Text(t.label),
+                      selected: prefs.themeId == t,
+                      onSelected: (_) => c.setTheme(t),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const _SheetLabel('Font'),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final f in ReadingFontFamily.values)
+                    ChoiceChip(
+                      label: Text(f.label),
+                      selected: prefs.fontFamily == f,
+                      onSelected: (_) => c.setFont(f),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _SheetSlider(
+                label: 'Text size',
+                value: prefs.fontSizeSp,
+                min: 12,
+                max: 40,
+                divisions: 28,
+                display: prefs.fontSizeSp.round().toString(),
+                onChanged: c.setFontSize,
+              ),
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.tune),
+                  label: const Text('All text settings'),
+                  onPressed: () => _openFullSettings(sheetContext),
                 ),
-              ],
-            ),
+              ),
+            ],
           );
         },
       ),
+    );
+  }
+
+  /// Reading focus: the unified line-focus aid (highlight + ruler bands).
+  void _focusSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => Consumer(
+        builder: (context, ref, _) {
+          final prefs = ref.watch(readingPrefsProvider);
+          final c = ref.read(readingPrefsProvider.notifier);
+          return _SheetBody(
+            title: 'Reading focus',
+            children: [
+              Text(
+                'A line-focus aid that follows your reading to keep your place.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final r in ReadingRulerStyle.values)
+                    ChoiceChip(
+                      label: Text(r.label),
+                      selected: prefs.rulerStyle == r,
+                      onSelected: (_) => c.setRulerStyle(r),
+                    ),
+                ],
+              ),
+              if (prefs.rulerStyle != ReadingRulerStyle.off) ...[
+                const SizedBox(height: 14),
+                const _SheetLabel('Focus height'),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 1, label: Text('1 line')),
+                      ButtonSegment(value: 2, label: Text('2 lines')),
+                      ButtonSegment(value: 3, label: Text('3 lines')),
+                    ],
+                    selected: {prefs.rulerRows.clamp(1, 3)},
+                    onSelectionChanged: (s) => c.setFocusRows(s.first),
+                    showSelectedIcon: false,
+                  ),
+                ),
+              ],
+              if (prefs.rulerStyle.isBand) ...[
+                const SizedBox(height: 12),
+                _SheetSlider(
+                  label: 'Band position',
+                  value: prefs.rulerCenter,
+                  min: 0.15,
+                  max: 0.85,
+                  divisions: 14,
+                  display: '${(prefs.rulerCenter * 100).round()}%',
+                  onChanged: c.setRulerCenter,
+                ),
+              ],
+              const SizedBox(height: 4),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Sentence pacing'),
+                subtitle: const Text('Show each sentence as its own block.'),
+                value: prefs.sentencePacing,
+                onChanged: c.setSentencePacing,
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.tune),
+                  label: const Text('More settings'),
+                  onPressed: () => _openFullSettings(sheetContext),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Notes & bookmarks: add at the current spot, or open the full lists.
+  void _annotationsSheet(LibraryEntry entry) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => _SheetBody(
+        title: 'Notes & bookmarks',
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.note_add_outlined),
+            title: const Text('Add note here'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _addNoteHere();
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.bookmark_add_outlined),
+            title: const Text('Bookmark this page'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _addBookmark(entry);
+            },
+          ),
+          const Divider(),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.notes_outlined),
+            title: const Text('View notes'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _showNotes(entry.id);
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.bookmarks_outlined),
+            title: const Text('View bookmarks'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _showBookmarks(entry.id);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Standard padded body for the reader's grouped quick-sheets.
+class _SheetBody extends StatelessWidget {
+  const _SheetBody({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              ...children,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetLabel extends StatelessWidget {
+  const _SheetLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) =>
+      Text(text, style: Theme.of(context).textTheme.bodyMedium);
+}
+
+class _SheetSlider extends StatelessWidget {
+  const _SheetSlider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.display,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String display;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label),
+            Text(display, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+        Slider(
+          value: value.clamp(min, max),
+          min: min,
+          max: max,
+          divisions: divisions,
+          onChanged: onChanged,
+        ),
+      ],
     );
   }
 }

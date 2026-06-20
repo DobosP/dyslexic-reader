@@ -7,8 +7,8 @@ import '../../../domain/reflow/bionic.dart';
 /// optional [bionic] prefix-bold, a read-along chunk highlight over the
 /// character range [highlightStart, highlightEnd), a tighter current-word
 /// highlight over [wordStart, wordEnd) (painted on top of the chunk band during
-/// read-aloud), and a dotted underline over any [noteRanges] (sentences the
-/// user has annotated).
+/// read-aloud), and a solid colored underline + faint tint over any [noteRanges]
+/// (the exact words the user has annotated, so the note's place is visible).
 InlineSpan buildParagraphSpan(
   List<Word> words,
   TextStyle base, {
@@ -36,18 +36,23 @@ InlineSpan buildParagraphSpan(
   bool noted(Word w) =>
       hasNotes && noteRanges.any((r) => w.start < r.$2 && w.end > r.$1);
 
+  final noteTint = (noteColor ?? base.color)?.withValues(alpha: 0.14);
+
   TextStyle styleFor(Word w) {
     var s = base;
-    if (inRange(w)) s = s.copyWith(backgroundColor: highlightColor);
-    if (inWord(w)) s = s.copyWith(backgroundColor: wordColor);
+    // Notes sit underneath: a faint tint + solid underline that persists even
+    // while the transient read-along highlight paints over the background.
     if (noted(w)) {
       s = s.copyWith(
+        backgroundColor: noteTint,
         decoration: TextDecoration.underline,
         decorationColor: noteColor ?? base.color,
-        decorationStyle: TextDecorationStyle.dotted,
-        decorationThickness: 2,
+        decorationStyle: TextDecorationStyle.solid,
+        decorationThickness: 2.5,
       );
     }
+    if (inRange(w)) s = s.copyWith(backgroundColor: highlightColor);
+    if (inWord(w)) s = s.copyWith(backgroundColor: wordColor);
     return s;
   }
 
@@ -66,13 +71,23 @@ InlineSpan buildParagraphSpan(
     }
 
     if (i != words.length - 1) {
-      // Carry the read-along background across the inter-word space (keeps the
-      // highlight continuous); the note underline stays on words only.
-      final sepHi = inRange(w) && inRange(words[i + 1]);
-      spans.add(TextSpan(
-        text: ' ',
-        style: sepHi ? base.copyWith(backgroundColor: highlightColor) : base,
-      ));
+      // Carry the note underline/tint and the read-along background across the
+      // inter-word space so each stays continuous between adjacent words.
+      final next = words[i + 1];
+      var sep = base;
+      if (noted(w) && noted(next)) {
+        sep = sep.copyWith(
+          backgroundColor: noteTint,
+          decoration: TextDecoration.underline,
+          decorationColor: noteColor ?? base.color,
+          decorationStyle: TextDecorationStyle.solid,
+          decorationThickness: 2.5,
+        );
+      }
+      if (inRange(w) && inRange(next)) {
+        sep = sep.copyWith(backgroundColor: highlightColor);
+      }
+      spans.add(TextSpan(text: ' ', style: sep));
     }
   }
   return TextSpan(style: base, children: spans);

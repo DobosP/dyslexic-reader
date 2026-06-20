@@ -18,8 +18,13 @@ enum ReadingFontFamily {
   final String? family;
 }
 
-/// Reading-ruler / line-focus style. A focus band the reader can drag to keep
-/// their place; surrounding text is tinted or dimmed depending on the style.
+/// Reading-focus style: a single line-focus aid that auto-follows your reading
+/// to keep your place. [highlight] tints the sentence at the reading line as you
+/// scroll; the remaining styles paint a focus band (tinted or dimmed) that the
+/// text flows under, like a physical reading ruler held still over the page.
+///
+/// This unifies what used to be two separate features — the scroll-linked
+/// "reading guide" highlight and the reading "ruler" band — into one picker.
 ///
 /// Strong evidence base: the CHI-2023 "Digital Reading Rulers" study found all
 /// of these styles improved reading speed and comprehension, with the largest
@@ -27,7 +32,8 @@ enum ReadingFontFamily {
 /// we offer the choice. (See docs/RESEARCH.md §1.)
 enum ReadingRulerStyle {
   off('Off'),
-  bar('Tint bar'),
+  highlight('Highlight line'),
+  bar('Tint band'),
   underline('Underline'),
   shade('Shade'),
   spotlight('Spotlight');
@@ -35,6 +41,11 @@ enum ReadingRulerStyle {
   const ReadingRulerStyle(this.label);
 
   final String label;
+
+  /// Whether this style paints a focus band overlay (as opposed to [off] or the
+  /// in-text [highlight]).
+  bool get isBand =>
+      this == bar || this == underline || this == shade || this == spotlight;
 }
 
 /// Reading background/foreground theme. Pure white is intentionally avoided
@@ -118,13 +129,14 @@ class ReadingPrefs {
   /// Continuous scrolling text instead of fixed pages.
   final bool readerContinuous;
 
-  /// Reading-ruler / line-focus style (off by default).
+  /// Reading-focus style (off by default). See [ReadingRulerStyle].
   final ReadingRulerStyle rulerStyle;
 
-  /// How many lines tall the reading-ruler focus band is (1–4).
+  /// How many lines tall the reading-focus band / highlight is (1–3).
   final int rulerRows;
 
-  /// Vertical position of the ruler band as a fraction of the viewport (0–1).
+  /// Vertical position of the focus band as a fraction of the viewport (0–1).
+  /// The band auto-follows reading at this resting line; text scrolls under it.
   final double rulerCenter;
 
   /// Chosen text-to-speech voice (engine voice name); null = engine default.
