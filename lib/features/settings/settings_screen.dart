@@ -131,36 +131,6 @@ class SettingsScreen extends ConsumerWidget {
             display: '${prefs.maxLineChars.round()} chars',
             onChanged: c.setMaxLineChars,
           ),
-          _SliderTile(
-            label: 'Read-along pace',
-            value: prefs.readingWpm,
-            min: 60,
-            max: 400,
-            divisions: 34,
-            display: '${prefs.readingWpm.round()} wpm',
-            onChanged: c.setReadingWpm,
-          ),
-          const SizedBox(height: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Highlight size', style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<int>(
-                  segments: const [
-                    ButtonSegment(value: 1, label: Text('1 row')),
-                    ButtonSegment(value: 2, label: Text('2 rows')),
-                    ButtonSegment(value: 3, label: Text('3 rows')),
-                  ],
-                  selected: {prefs.highlightMaxRows},
-                  onSelectionChanged: (s) => c.setHighlightMaxRows(s.first),
-                  showSelectedIcon: false,
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,11 +151,32 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Bionic reading'),
+            subtitle: const Text(
+              'Bold the start of each word. Optional — limited evidence.',
+            ),
+            value: prefs.bionicEnabled,
+            onChanged: c.setBionic,
+          ),
           const SizedBox(height: 16),
-          const _SectionLabel('Reading ruler'),
+          const _SectionLabel('Reading focus'),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Highlight current line'),
+            subtitle: const Text(
+              'The main reading aid: tints the sentence you’re reading and '
+              'follows your scroll.',
+            ),
+            value: prefs.lineHighlight,
+            onChanged: c.setLineHighlight,
+          ),
+          const SizedBox(height: 8),
+          Text('Focus band', style: Theme.of(context).textTheme.bodyMedium),
           Text(
-            'A focus band you can drag to keep your place — strong evidence for '
-            'dyslexic readers. Drag the grip on its right edge while reading.',
+            'Optional band that rests on the reading line for the text to flow '
+            'under — strong evidence for dyslexic readers.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -200,12 +191,12 @@ class SettingsScreen extends ConsumerWidget {
                 ),
             ],
           ),
-          if (prefs.rulerStyle != ReadingRulerStyle.off) ...[
+          if (prefs.lineHighlight || prefs.rulerStyle != ReadingRulerStyle.off) ...[
             const SizedBox(height: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Ruler width', style: Theme.of(context).textTheme.bodyMedium),
+                Text('Focus height', style: Theme.of(context).textTheme.bodyMedium),
                 const SizedBox(height: 6),
                 SizedBox(
                   width: double.infinity,
@@ -216,13 +207,34 @@ class SettingsScreen extends ConsumerWidget {
                       ButtonSegment(value: 3, label: Text('3 lines')),
                     ],
                     selected: {prefs.rulerRows.clamp(1, 3)},
-                    onSelectionChanged: (s) => c.setRulerRows(s.first),
+                    onSelectionChanged: (s) => c.setFocusRows(s.first),
                     showSelectedIcon: false,
                   ),
                 ),
               ],
             ),
           ],
+          if (prefs.rulerStyle.isBand) ...[
+            const SizedBox(height: 8),
+            _SliderTile(
+              label: 'Band position',
+              value: prefs.rulerCenter,
+              min: 0.15,
+              max: 0.85,
+              divisions: 14,
+              display: '${(prefs.rulerCenter * 100).round()}%',
+              onChanged: c.setRulerCenter,
+            ),
+          ],
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Sentence pacing'),
+            subtitle: const Text(
+              'Show each sentence as its own spaced block for calmer pacing.',
+            ),
+            value: prefs.sentencePacing,
+            onChanged: c.setSentencePacing,
+          ),
           const SizedBox(height: 16),
           const _SectionLabel('Read aloud'),
           ListTile(
@@ -244,24 +256,14 @@ class SettingsScreen extends ConsumerWidget {
             display: '${prefs.ttsPitch.toStringAsFixed(1)}×',
             onChanged: c.setTtsPitch,
           ),
-          const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Sentence pacing'),
-            subtitle: const Text(
-              'Show each sentence as its own spaced block for calmer pacing.',
-            ),
-            value: prefs.sentencePacing,
-            onChanged: c.setSentencePacing,
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Bionic reading'),
-            subtitle: const Text(
-              'Bold the start of each word. Optional — limited evidence.',
-            ),
-            value: prefs.bionicEnabled,
-            onChanged: c.setBionic,
+          _SliderTile(
+            label: 'Read-along pace',
+            value: prefs.readingWpm,
+            min: 60,
+            max: 400,
+            divisions: 34,
+            display: '${prefs.readingWpm.round()} wpm',
+            onChanged: c.setReadingWpm,
           ),
           const SizedBox(height: 8),
           const Divider(),

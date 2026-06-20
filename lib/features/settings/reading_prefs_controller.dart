@@ -30,9 +30,15 @@ class ReadingPrefsController extends Notifier<ReadingPrefs> {
       _update(state.copyWith(highlightMaxRows: v));
   void setReaderContinuous(bool v) =>
       _update(state.copyWith(readerContinuous: v));
+  void setLineHighlight(bool v) => _update(state.copyWith(lineHighlight: v));
   void setRulerStyle(ReadingRulerStyle v) =>
       _update(state.copyWith(rulerStyle: v));
   void setRulerRows(int v) => _update(state.copyWith(rulerRows: v));
+
+  /// Unified "focus height" — keeps the highlight chunk size and the focus-band
+  /// height in step, since they're one concept in the reading-focus UI.
+  void setFocusRows(int v) =>
+      _update(state.copyWith(highlightMaxRows: v, rulerRows: v));
   void setRulerCenter(double v) =>
       _update(state.copyWith(rulerCenter: v.clamp(0.08, 0.92)));
   void setTtsVoice(String? name, String? locale) => _update(

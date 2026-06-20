@@ -56,13 +56,14 @@ WHAT IT DOES
 • Legible fonts: Atkinson Hyperlegible, Lexend, OpenDyslexic, or your system font
 • Gentle, low-glare themes (cream, sepia, off-white, dark, high-contrast) —
   never harsh pure white
-• Reading ruler / line focus you can drag to keep your place (four styles)
+• Reading focus that follows your reading: highlight the line you’re on, with
+  an optional tinted or dimmed focus band (four styles) layered underneath
 • Read aloud with the words highlighted as they are spoken, adjustable speed,
   pitch, and your choice of voice
-• A reading guide that follows your scrolling
 • On-device text recognition (OCR) for scanned PDFs
 • Search within a document
-• Bookmarks, per-sentence notes, and a document outline
+• Bookmarks and notes anchored on the text (highlighted, with a margin marker),
+  plus a document outline
 • Page view or continuous scrolling
 
 PRIVATE BY DESIGN
@@ -96,7 +97,7 @@ First release of Dyslexic Reader.
 
 • Open PDFs, Word docs and text and read them your way
 • Adjustable spacing, legible fonts, gentle themes
-• Draggable reading ruler and read-aloud with word highlighting
+• Reading focus that follows your reading, and read-aloud with word highlighting
 • On-device OCR for scanned PDFs, in-document search, bookmarks and notes
 
 Free, no ads, and fully on-device.

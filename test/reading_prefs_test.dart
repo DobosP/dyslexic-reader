@@ -10,6 +10,7 @@ void main() {
       lineHeight: 1.8,
       bionicEnabled: true,
       sentencePacing: true,
+      lineHighlight: true,
       rulerStyle: ReadingRulerStyle.spotlight,
       rulerRows: 3,
       rulerCenter: 0.6,
@@ -24,6 +25,7 @@ void main() {
     expect(back.lineHeight, 1.8);
     expect(back.bionicEnabled, true);
     expect(back.sentencePacing, true);
+    expect(back.lineHighlight, true);
     expect(back.rulerStyle, ReadingRulerStyle.spotlight);
     expect(back.rulerRows, 3);
     expect(back.rulerCenter, 0.6);

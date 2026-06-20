@@ -122,6 +122,7 @@ class PaginatedReader extends StatefulWidget {
     this.highlightMaxRows = 2,
     this.noteRanges = const [],
     this.onTextTap,
+    this.onNoteTap,
     this.noteColor,
     this.continuous = false,
   });
@@ -146,8 +147,13 @@ class PaginatedReader extends StatefulWidget {
   /// Character ranges the user has annotated (dotted-underlined in the text).
   final List<(int, int)> noteRanges;
 
-  /// Called when the user long-presses text, with the sentence range hit.
+  /// Called when the user long-presses text, with the sentence range hit
+  /// (creates a note on that sentence).
   final void Function(int start, int end)? onTextTap;
+
+  /// Called when the user taps a margin note marker, with the existing note's
+  /// range, so the reader can open it for viewing/editing.
+  final void Function(int start, int end)? onNoteTap;
   final Color? noteColor;
 
   /// Continuous scroll (one paragraph per item) instead of fixed pages.
@@ -609,6 +615,7 @@ class _PaginatedReaderState extends State<PaginatedReader> {
             noteRanges: widget.noteRanges,
             noteColor: widget.noteColor,
             onTextTap: widget.onTextTap,
+            onNoteTap: widget.onNoteTap,
             textScaler: scaler,
           ),
         );
@@ -642,6 +649,7 @@ class _PageBody extends StatelessWidget {
     required this.noteRanges,
     required this.noteColor,
     required this.onTextTap,
+    required this.onNoteTap,
     required this.textScaler,
   });
 
@@ -656,6 +664,7 @@ class _PageBody extends StatelessWidget {
   final List<(int, int)> noteRanges;
   final Color? noteColor;
   final void Function(int start, int end)? onTextTap;
+  final void Function(int start, int end)? onNoteTap;
   final TextScaler textScaler;
 
   @override
@@ -690,14 +699,110 @@ class _PageBody extends StatelessWidget {
   }
 
   Widget _wrap(PageParagraph p) {
-    final body = _paragraph(p);
+    Widget body = _paragraph(p);
     final cb = onTextTap;
-    if (cb == null) return body;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onLongPressStart: (d) => _handleLongPress(p, d.localPosition),
-      child: body,
+    if (cb != null) {
+      body = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Tap a highlighted note to open it; long-press any sentence to add one.
+        onTapUp: (d) => _handleTap(p, d.localPosition),
+        onLongPressStart: (d) => _handleLongPress(p, d.localPosition),
+        child: body,
+      );
+    }
+    final markers = _noteMarkers(p);
+    if (markers.isEmpty) return body;
+    // Markers are a visual cue painted into the left gutter (Clip.none lets them
+    // sit outside the column); tapping the highlighted text opens the note.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [body, ...markers],
     );
+  }
+
+  /// A small sticky-note glyph in the left margin for each note that *starts* in
+  /// this paragraph, vertically aligned to the annotated line so you can see
+  /// where every note lives.
+  List<Widget> _noteMarkers(PageParagraph p) {
+    if (noteRanges.isEmpty || p.words.isEmpty) return const [];
+    final starts = [
+      for (final r in noteRanges)
+        if (r.$1 >= p.start && r.$1 < p.end) r,
+    ];
+    if (starts.isEmpty) return const [];
+
+    final painter = TextPainter(
+      text: buildParagraphSpan(
+        p.words,
+        styleForRole(p.role, style),
+        bionic: bionic && p.role == BlockRole.body,
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+    )..layout(maxWidth: columnWidth);
+
+    final markers = <Widget>[];
+    for (final r in starts) {
+      final idx = _renderIndexForOffset(p, r.$1);
+      final dy = painter.getOffsetForCaret(TextPosition(offset: idx), Rect.zero).dy;
+      markers.add(Positioned(
+        left: -22,
+        top: dy,
+        child: Icon(
+          Icons.sticky_note_2,
+          size: 18,
+          color: (noteColor ?? style.color)?.withValues(alpha: 0.9),
+        ),
+      ));
+    }
+    painter.dispose();
+    return markers;
+  }
+
+  /// Index into the rendered string (words joined by single spaces) for the
+  /// document character [offset], used to find the annotated line's top.
+  int _renderIndexForOffset(PageParagraph p, int offset) {
+    var cursor = 0;
+    for (final w in p.words) {
+      if (w.end > offset) {
+        return cursor + (offset - w.start).clamp(0, w.text.length);
+      }
+      cursor += w.text.length + 1; // word + separator space
+    }
+    return cursor > 0 ? cursor - 1 : 0;
+  }
+
+  /// A tap on the text: if it lands on an annotated word, open that note.
+  void _handleTap(PageParagraph p, Offset localPos) {
+    final tap = onNoteTap;
+    if (tap == null || noteRanges.isEmpty || p.words.isEmpty) return;
+    final painter = TextPainter(
+      text: buildParagraphSpan(
+        p.words,
+        styleForRole(p.role, style),
+        bionic: bionic && p.role == BlockRole.body,
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+    )..layout(maxWidth: columnWidth);
+    final index = painter.getPositionForOffset(localPos).offset;
+    painter.dispose();
+    var cursor = 0;
+    Word? found;
+    for (final w in p.words) {
+      if (index <= cursor + w.text.length) {
+        found = w;
+        break;
+      }
+      cursor += w.text.length + 1;
+    }
+    final hit = found ?? p.words.last;
+    for (final r in noteRanges) {
+      if (hit.start < r.$2 && hit.end > r.$1) {
+        tap(r.$1, r.$2);
+        return;
+      }
+    }
   }
 
   Widget _paragraph(PageParagraph p) {
