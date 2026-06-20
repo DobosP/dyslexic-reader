@@ -530,8 +530,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     LibraryEntry? entry,
     bool canViewOriginal,
   ) {
-    final fp = ref.read(readingPrefsProvider);
-    final focusOn = fp.lineHighlight || fp.rulerStyle != ReadingRulerStyle.off;
+    final focusOn =
+        ref.read(readingPrefsProvider).rulerStyle != ReadingRulerStyle.off;
     return AppBar(
       backgroundColor: palette.background,
       foregroundColor: palette.onBackground,
@@ -910,28 +910,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         builder: (context, ref, _) {
           final prefs = ref.watch(readingPrefsProvider);
           final c = ref.read(readingPrefsProvider.notifier);
-          final focusActive =
-              prefs.lineHighlight || prefs.rulerStyle != ReadingRulerStyle.off;
           return _SheetBody(
             title: 'Reading focus',
             children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Highlight current line'),
-                subtitle: const Text(
-                  'Tints the sentence you’re reading and follows your scroll.',
-                ),
-                value: prefs.lineHighlight,
-                onChanged: c.setLineHighlight,
-              ),
-              const SizedBox(height: 8),
-              const _SheetLabel('Focus band'),
               Text(
-                'Optional — rests a band on the reading line that the text flows '
-                'under.',
+                'Pick one way to keep your place — it follows your reading. '
+                'Highlight tints the current line; the bands rest a strip on it.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 children: [
@@ -943,7 +930,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     ),
                 ],
               ),
-              if (focusActive) ...[
+              if (prefs.rulerStyle != ReadingRulerStyle.off) ...[
                 const SizedBox(height: 14),
                 const _SheetLabel('Focus height'),
                 const SizedBox(height: 6),
