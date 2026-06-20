@@ -162,21 +162,11 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           const _SectionLabel('Reading focus'),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Highlight current line'),
-            subtitle: const Text(
-              'The main reading aid: tints the sentence you’re reading and '
-              'follows your scroll.',
-            ),
-            value: prefs.lineHighlight,
-            onChanged: c.setLineHighlight,
-          ),
-          const SizedBox(height: 8),
-          Text('Focus band', style: Theme.of(context).textTheme.bodyMedium),
           Text(
-            'Optional band that rests on the reading line for the text to flow '
-            'under — strong evidence for dyslexic readers.',
+            'One line-focus aid that follows your reading to keep your place. '
+            'Highlight (the default) tints the current line; the band styles '
+            'rest a strip on it for the text to flow under. Strong evidence for '
+            'dyslexic readers.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -191,7 +181,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
             ],
           ),
-          if (prefs.lineHighlight || prefs.rulerStyle != ReadingRulerStyle.off) ...[
+          if (prefs.rulerStyle != ReadingRulerStyle.off) ...[
             const SizedBox(height: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,

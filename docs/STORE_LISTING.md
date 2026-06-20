@@ -56,8 +56,8 @@ WHAT IT DOES
 • Legible fonts: Atkinson Hyperlegible, Lexend, OpenDyslexic, or your system font
 • Gentle, low-glare themes (cream, sepia, off-white, dark, high-contrast) —
   never harsh pure white
-• Reading focus that follows your reading: highlight the line you’re on, with
-  an optional tinted or dimmed focus band (four styles) layered underneath
+• Reading focus that follows your reading — highlight the line you’re on (the
+  default) or switch to a tinted or dimmed focus band (five modes in total)
 • Read aloud with the words highlighted as they are spoken, adjustable speed,
   pitch, and your choice of voice
 • On-device text recognition (OCR) for scanned PDFs

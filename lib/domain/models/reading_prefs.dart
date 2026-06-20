@@ -18,11 +18,11 @@ enum ReadingFontFamily {
   final String? family;
 }
 
-/// Optional **focus band** mode — a secondary reading aid layered under the
-/// main line highlight ([ReadingPrefs.lineHighlight]). A band rests at the
-/// reading line and the text flows under it, like a physical reading ruler held
-/// still over the page; the styles differ in how they treat the surrounding
-/// text (tint the band, underline it, or dim above/below).
+/// Reading-focus mode — a single line-focus aid that auto-follows your reading
+/// to keep your place. The modes are mutually exclusive: [highlight] (the
+/// default) tints the sentence at the reading line as you scroll, while the
+/// band styles paint a focus strip the text flows under, differing in how they
+/// treat the surrounding text (tint the band, underline it, or dim above/below).
 ///
 /// Strong evidence base: the CHI-2023 "Digital Reading Rulers" study found all
 /// of these styles improved reading speed and comprehension, with the largest
@@ -30,6 +30,7 @@ enum ReadingFontFamily {
 /// we offer the choice. (See docs/RESEARCH.md §1.)
 enum ReadingRulerStyle {
   off('Off'),
+  highlight('Highlight line'),
   bar('Tint band'),
   underline('Underline'),
   shade('Shade'),
@@ -39,8 +40,10 @@ enum ReadingRulerStyle {
 
   final String label;
 
-  /// Whether a focus band overlay should be painted (anything but [off]).
-  bool get isBand => this != off;
+  /// Whether a focus band overlay should be painted — the band styles only, not
+  /// [off] or the in-text [highlight].
+  bool get isBand =>
+      this == bar || this == underline || this == shade || this == spotlight;
 }
 
 /// Reading background/foreground theme. Pure white is intentionally avoided
@@ -78,8 +81,7 @@ class ReadingPrefs {
     this.readingWpm = 180,
     this.highlightMaxRows = 2,
     this.readerContinuous = false,
-    this.lineHighlight = false,
-    this.rulerStyle = ReadingRulerStyle.off,
+    this.rulerStyle = ReadingRulerStyle.highlight,
     this.rulerRows = 2,
     this.rulerCenter = 0.45,
     this.ttsVoiceName,
@@ -125,12 +127,8 @@ class ReadingPrefs {
   /// Continuous scrolling text instead of fixed pages.
   final bool readerContinuous;
 
-  /// The main reading-focus utility: highlight the sentence at the reading line
-  /// and follow it as you scroll. Off by default.
-  final bool lineHighlight;
-
-  /// Optional focus-band mode layered under [lineHighlight] (off by default).
-  /// See [ReadingRulerStyle].
+  /// The active reading-focus mode (defaults to [ReadingRulerStyle.highlight]).
+  /// The highlight and band styles are mutually exclusive.
   final ReadingRulerStyle rulerStyle;
 
   /// How many lines tall the reading-focus band / highlight is (1–3).
@@ -150,6 +148,10 @@ class ReadingPrefs {
   final double ttsPitch;
 
   // --- Derived values used by the renderer ---
+
+  /// True when the focus mode is the in-text line highlight (the default).
+  bool get lineHighlight => rulerStyle == ReadingRulerStyle.highlight;
+
   double get letterSpacingPx => letterSpacingEm * fontSizeSp;
   double get wordSpacingPx => wordSpacingEm * fontSizeSp;
   double get paragraphSpacingPx => paragraphSpacingEm * fontSizeSp;
@@ -172,7 +174,6 @@ class ReadingPrefs {
     double? readingWpm,
     int? highlightMaxRows,
     bool? readerContinuous,
-    bool? lineHighlight,
     ReadingRulerStyle? rulerStyle,
     int? rulerRows,
     double? rulerCenter,
@@ -195,7 +196,6 @@ class ReadingPrefs {
       readingWpm: readingWpm ?? this.readingWpm,
       highlightMaxRows: highlightMaxRows ?? this.highlightMaxRows,
       readerContinuous: readerContinuous ?? this.readerContinuous,
-      lineHighlight: lineHighlight ?? this.lineHighlight,
       rulerStyle: rulerStyle ?? this.rulerStyle,
       rulerRows: rulerRows ?? this.rulerRows,
       rulerCenter: rulerCenter ?? this.rulerCenter,
@@ -219,7 +219,6 @@ class ReadingPrefs {
         'readingWpm': readingWpm,
         'highlightMaxRows': highlightMaxRows,
         'readerContinuous': readerContinuous,
-        'lineHighlight': lineHighlight,
         'rulerStyle': rulerStyle.name,
         'rulerRows': rulerRows,
         'rulerCenter': rulerCenter,
@@ -245,7 +244,6 @@ class ReadingPrefs {
       highlightMaxRows:
           (j['highlightMaxRows'] as num?)?.toInt() ?? d.highlightMaxRows,
       readerContinuous: j['readerContinuous'] as bool? ?? d.readerContinuous,
-      lineHighlight: j['lineHighlight'] as bool? ?? d.lineHighlight,
       rulerStyle: _enumByName(ReadingRulerStyle.values, j['rulerStyle'], d.rulerStyle),
       rulerRows: (j['rulerRows'] as num?)?.toInt() ?? d.rulerRows,
       rulerCenter: _toDouble(j['rulerCenter'], d.rulerCenter),

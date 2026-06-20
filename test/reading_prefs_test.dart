@@ -10,7 +10,6 @@ void main() {
       lineHeight: 1.8,
       bionicEnabled: true,
       sentencePacing: true,
-      lineHighlight: true,
       rulerStyle: ReadingRulerStyle.spotlight,
       rulerRows: 3,
       rulerCenter: 0.6,
@@ -25,8 +24,9 @@ void main() {
     expect(back.lineHeight, 1.8);
     expect(back.bionicEnabled, true);
     expect(back.sentencePacing, true);
-    expect(back.lineHighlight, true);
     expect(back.rulerStyle, ReadingRulerStyle.spotlight);
+    // lineHighlight is derived from the focus mode.
+    expect(back.lineHighlight, isFalse);
     expect(back.rulerRows, 3);
     expect(back.rulerCenter, 0.6);
     expect(back.ttsVoiceName, 'en-us-x-sfg#male_1');
