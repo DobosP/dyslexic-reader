@@ -30,6 +30,7 @@ class ReadingPrefsController extends Notifier<ReadingPrefs> {
       _update(state.copyWith(highlightMaxRows: v));
   void setReaderContinuous(bool v) =>
       _update(state.copyWith(readerContinuous: v));
+  void setLineHighlight(bool v) => _update(state.copyWith(lineHighlight: v));
   void setRulerStyle(ReadingRulerStyle v) =>
       _update(state.copyWith(rulerStyle: v));
   void setRulerRows(int v) => _update(state.copyWith(rulerRows: v));

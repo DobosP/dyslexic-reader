@@ -35,12 +35,6 @@ void main() {
     expect(bandLayers(), findsNothing);
   });
 
-  testWidgets('highlight is handled in-text, not as a band overlay',
-      (tester) async {
-    await tester.pumpWidget(host(ReadingRulerStyle.highlight));
-    expect(bandLayers(), findsNothing);
-  });
-
   for (final style in [
     ReadingRulerStyle.bar,
     ReadingRulerStyle.underline,
@@ -57,9 +51,8 @@ void main() {
     });
   }
 
-  test('isBand classifies only the band styles', () {
+  test('isBand is true for every style except off', () {
     expect(ReadingRulerStyle.off.isBand, isFalse);
-    expect(ReadingRulerStyle.highlight.isBand, isFalse);
     expect(ReadingRulerStyle.bar.isBand, isTrue);
     expect(ReadingRulerStyle.underline.isBand, isTrue);
     expect(ReadingRulerStyle.shade.isBand, isTrue);

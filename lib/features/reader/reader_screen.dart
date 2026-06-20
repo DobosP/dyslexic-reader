@@ -328,12 +328,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     return cur;
   }
 
-  // --- Reading focus (scroll-linked "highlight line" style) ---
+  // --- Reading focus: main line highlight (scroll-linked) ---
 
-  /// True when the unified reading-focus aid is set to the in-text highlight
-  /// style (the other band styles are drawn by [ReadingRulerOverlay]).
-  bool get _focusHighlight =>
-      ref.read(readingPrefsProvider).rulerStyle == ReadingRulerStyle.highlight;
+  /// True when the main reading-focus utility (the line highlight) is on. The
+  /// optional band modes are drawn separately by [ReadingRulerOverlay].
+  bool get _focusHighlight => ref.read(readingPrefsProvider).lineHighlight;
 
   void _onReadingChunk(Chunk chunk) {
     if (_playing || !_focusHighlight) return;
@@ -342,12 +341,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
   }
 
-  /// React to the reading-focus style changing: light up / clear the in-text
-  /// highlight so it matches the chosen style immediately (unless read-aloud is
-  /// driving the highlight).
-  void _onFocusStyleChanged(ReadingRulerStyle style) {
+  /// React to the line-highlight toggle: light up / clear the in-text highlight
+  /// immediately (unless read-aloud is already driving the highlight).
+  void _onLineHighlightChanged(bool on) {
     if (_playing) return;
-    if (style == ReadingRulerStyle.highlight) {
+    if (on) {
       _setHighlight(_pageCtrl.chunkAt(_pageCtrl.currentOffset));
     } else {
       _setHighlight(null);
@@ -358,9 +356,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   Widget build(BuildContext context) {
     final prefs = ref.watch(readingPrefsProvider);
     final palette = paletteFor(prefs.themeId);
-    // Keep the in-text highlight in step with the reading-focus style.
-    ref.listen(readingPrefsProvider.select((p) => p.rulerStyle), (_, next) {
-      _onFocusStyleChanged(next);
+    // Keep the in-text highlight in step with the line-highlight toggle.
+    ref.listen(readingPrefsProvider.select((p) => p.lineHighlight), (_, next) {
+      _onLineHighlightChanged(next);
     });
     final entry = _liveEntry(ref.watch(libraryControllerProvider).valueOrNull);
     final notes = entry?.notes ?? const <Note>[];
@@ -532,8 +530,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     LibraryEntry? entry,
     bool canViewOriginal,
   ) {
-    final focusOn =
-        ref.read(readingPrefsProvider).rulerStyle != ReadingRulerStyle.off;
+    final fp = ref.read(readingPrefsProvider);
+    final focusOn = fp.lineHighlight || fp.rulerStyle != ReadingRulerStyle.off;
     return AppBar(
       backgroundColor: palette.background,
       foregroundColor: palette.onBackground,
@@ -912,14 +910,28 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         builder: (context, ref, _) {
           final prefs = ref.watch(readingPrefsProvider);
           final c = ref.read(readingPrefsProvider.notifier);
+          final focusActive =
+              prefs.lineHighlight || prefs.rulerStyle != ReadingRulerStyle.off;
           return _SheetBody(
             title: 'Reading focus',
             children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Highlight current line'),
+                subtitle: const Text(
+                  'Tints the sentence you’re reading and follows your scroll.',
+                ),
+                value: prefs.lineHighlight,
+                onChanged: c.setLineHighlight,
+              ),
+              const SizedBox(height: 8),
+              const _SheetLabel('Focus band'),
               Text(
-                'A line-focus aid that follows your reading to keep your place.',
+                'Optional — rests a band on the reading line that the text flows '
+                'under.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 children: [
@@ -931,7 +943,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     ),
                 ],
               ),
-              if (prefs.rulerStyle != ReadingRulerStyle.off) ...[
+              if (focusActive) ...[
                 const SizedBox(height: 14),
                 const _SheetLabel('Focus height'),
                 const SizedBox(height: 6),

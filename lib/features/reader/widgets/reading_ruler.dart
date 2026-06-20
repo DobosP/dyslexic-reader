@@ -15,8 +15,8 @@ import '../../../domain/models/reading_prefs.dart';
 /// docs/RESEARCH.md §1): [ReadingRulerStyle.bar] (tinted band),
 /// [ReadingRulerStyle.underline], [ReadingRulerStyle.shade] (light dimming
 /// above/below) and [ReadingRulerStyle.spotlight] (stronger dimming). The
-/// [ReadingRulerStyle.highlight] and [ReadingRulerStyle.off] styles paint no
-/// band (they're handled in-text), so this overlay renders nothing for them.
+/// [ReadingRulerStyle.off] style paints no band, so this overlay renders
+/// nothing for it (and the main line highlight is handled in-text).
 class ReadingRulerOverlay extends StatelessWidget {
   const ReadingRulerOverlay({
     super.key,
@@ -49,7 +49,6 @@ class ReadingRulerOverlay extends StatelessWidget {
         final layers = <Widget>[];
         switch (style) {
           case ReadingRulerStyle.off:
-          case ReadingRulerStyle.highlight:
             break;
           case ReadingRulerStyle.spotlight:
           case ReadingRulerStyle.shade:
