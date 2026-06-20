@@ -8,12 +8,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// A library holding a single document with a pre-existing note.
+/// A library holding a single document with a pre-existing note. Persistence is
+/// stubbed out so the reader's dispose() doesn't touch the (unmocked) file system.
 class _OneDocLibrary extends LibraryController {
   _OneDocLibrary(this._entry);
   final LibraryEntry _entry;
   @override
   Future<List<LibraryEntry>> build() async => [_entry];
+  @override
+  Future<void> saveProgress(String id, int charOffset) async {}
+  @override
+  Future<void> saveTtsPosition(String id, int charOffset) async {}
 }
 
 void main() {
