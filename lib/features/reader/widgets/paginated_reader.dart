@@ -788,15 +788,15 @@ class _PageBody extends StatelessWidget {
     final index = painter.getPositionForOffset(localPos).offset;
     painter.dispose();
     var cursor = 0;
-    Word? hit;
+    Word? found;
     for (final w in p.words) {
       if (index <= cursor + w.text.length) {
-        hit = w;
+        found = w;
         break;
       }
       cursor += w.text.length + 1;
     }
-    hit ??= p.words.last;
+    final hit = found ?? p.words.last;
     for (final r in noteRanges) {
       if (hit.start < r.$2 && hit.end > r.$1) {
         tap(r.$1, r.$2);
