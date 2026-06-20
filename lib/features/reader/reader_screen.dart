@@ -50,6 +50,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   bool _playing = false;
   FlutterTts? _tts;
 
+  // Captured in initState so dispose() can persist progress without touching
+  // `ref` (which Riverpod forbids once the widget has been disposed).
+  late final LibraryController _library;
+
   // Words of the chunk currently being spoken: (spokenStart, spokenEnd,
   // absStart, absEnd). Maps the TTS progress callback's offsets (into the
   // spoken string) back to absolute document offsets for word-level highlight.
@@ -84,15 +88,20 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _library = ref.read(libraryControllerProvider.notifier);
+  }
+
+  @override
   void dispose() {
     _tts?.stop();
     _searchCtrl.dispose();
     _highlight.dispose();
     final entry = widget.entry;
     if (entry != null) {
-      final notifier = ref.read(libraryControllerProvider.notifier);
-      notifier.saveProgress(entry.id, _pageCtrl.currentOffset);
-      if (_hlStart >= 0) notifier.saveTtsPosition(entry.id, _hlStart);
+      _library.saveProgress(entry.id, _pageCtrl.currentOffset);
+      if (_hlStart >= 0) _library.saveTtsPosition(entry.id, _hlStart);
     }
     _pageCtrl.dispose();
     super.dispose();
