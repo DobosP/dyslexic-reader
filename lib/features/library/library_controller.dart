@@ -12,6 +12,7 @@ import '../../data/services/ocr_service.dart';
 import '../../domain/models/library_entry.dart';
 import '../../domain/models/reading_document.dart';
 import '../../domain/reflow/tokenizer.dart';
+import 'library_index_store.dart';
 
 /// Reports OCR progress (pages done / total, with an optional status label) so
 /// the UI can show it.
@@ -32,7 +33,7 @@ const int _kProcessingVersion = 1;
 /// blocks** file per document (and, for PDFs, a copied original).
 class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   Directory? _root;
-  File? _indexFile;
+  LibraryIndexStore? _indexStore;
 
   @override
   Future<List<LibraryEntry>> build() async {
@@ -41,7 +42,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       final root = Directory('${dir.path}/library');
       await root.create(recursive: true);
       _root = root;
-      _indexFile = File('${root.path}/index.json');
+      _indexStore = LibraryIndexStore(File('${root.path}/index.json'));
       return _backfillHashes(await _readIndex());
     } catch (_) {
       return <LibraryEntry>[];
@@ -72,20 +73,15 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return out;
   }
 
-  Future<List<LibraryEntry>> _readIndex() async {
-    final f = _indexFile;
-    if (f == null || !await f.exists()) return <LibraryEntry>[];
-    try {
-      final entries = LibraryEntry.decodeList(await f.readAsString());
-      entries.sort((a, b) => b.importedAt.compareTo(a.importedAt));
-      return entries;
-    } catch (_) {
-      return <LibraryEntry>[];
-    }
-  }
+  /// Load the index via the atomic store, which recovers from the backup if the
+  /// primary `index.json` is corrupt or missing (see [LibraryIndexStore]).
+  Future<List<LibraryEntry>> _readIndex() async =>
+      await _indexStore?.read() ?? <LibraryEntry>[];
 
+  /// Persist the index atomically (temp file + flush + rename) with a rotating
+  /// backup, so an interrupted write can never leave a torn `index.json`.
   Future<void> _writeIndex(List<LibraryEntry> entries) async {
-    await _indexFile?.writeAsString(LibraryEntry.encodeList(entries));
+    await _indexStore?.write(entries);
   }
 
   /// Show the system picker for a PDF or .txt file. Returns null if cancelled.
