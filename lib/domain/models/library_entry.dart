@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../structure/document_structure.dart';
+
 /// Where an imported document came from.
 enum DocSource {
   sampleText('Sample'),
@@ -15,24 +17,29 @@ enum DocSource {
 /// A saved spot in a document. [offset] is a character offset into the full
 /// text, so it survives font/spacing changes (unlike a page index).
 class Bookmark {
-  const Bookmark({required this.offset, required this.label, required this.createdAt});
+  const Bookmark({
+    required this.offset,
+    required this.label,
+    required this.createdAt,
+  });
 
   final int offset;
   final String label;
   final DateTime createdAt;
 
   Map<String, dynamic> toJson() => {
-        'offset': offset,
-        'label': label,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'offset': offset,
+    'label': label,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory Bookmark.fromJson(Map<String, dynamic> j) => Bookmark(
-        offset: (j['offset'] as num?)?.toInt() ?? 0,
-        label: j['label'] as String? ?? '',
-        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-      );
+    offset: (j['offset'] as num?)?.toInt() ?? 0,
+    label: j['label'] as String? ?? '',
+    createdAt:
+        DateTime.tryParse(j['createdAt'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+  );
 }
 
 /// A user note anchored to a character range [start, end) in the full text.
@@ -50,19 +57,20 @@ class Note {
   final DateTime createdAt;
 
   Map<String, dynamic> toJson() => {
-        'start': start,
-        'end': end,
-        'text': text,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'start': start,
+    'end': end,
+    'text': text,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory Note.fromJson(Map<String, dynamic> j) => Note(
-        start: (j['start'] as num?)?.toInt() ?? 0,
-        end: (j['end'] as num?)?.toInt() ?? 0,
-        text: j['text'] as String? ?? '',
-        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-      );
+    start: (j['start'] as num?)?.toInt() ?? 0,
+    end: (j['end'] as num?)?.toInt() ?? 0,
+    text: j['text'] as String? ?? '',
+    createdAt:
+        DateTime.tryParse(j['createdAt'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+  );
 }
 
 /// Metadata for a document saved in the on-device library. The extracted
@@ -84,6 +92,7 @@ class LibraryEntry {
     this.ttsCharOffset = 0,
     this.bookmarks = const [],
     this.notes = const [],
+    this.pdfOutline = const [],
     this.contentHash = '',
     this.processingVersion = 0,
   });
@@ -115,6 +124,12 @@ class LibraryEntry {
   /// User notes anchored to character ranges.
   final List<Note> notes;
 
+  /// Native PDF outline/bookmark entries mapped to reader character offsets.
+  ///
+  /// Empty for non-PDF documents and for PDFs without an embedded outline. The
+  /// reader falls back to heading-derived contents when this is empty.
+  final List<OutlineItem> pdfOutline;
+
   /// Stable fingerprint of the source file, used to de-duplicate imports.
   final String contentHash;
 
@@ -131,69 +146,73 @@ class LibraryEntry {
     int? ttsCharOffset,
     List<Bookmark>? bookmarks,
     List<Note>? notes,
+    List<OutlineItem>? pdfOutline,
     String? contentHash,
     int? processingVersion,
-  }) =>
-      LibraryEntry(
-        id: id,
-        title: title ?? this.title,
-        source: source,
-        cacheBlocksPath: cacheBlocksPath,
-        wordCount: wordCount ?? this.wordCount,
-        pageCount: pageCount ?? this.pageCount,
-        importedAt: importedAt ?? this.importedAt,
-        originalPath: originalPath,
-        hasTextLayer: hasTextLayer ?? this.hasTextLayer,
-        pdfPath: pdfPath,
-        readingCharOffset: readingCharOffset ?? this.readingCharOffset,
-        ttsCharOffset: ttsCharOffset ?? this.ttsCharOffset,
-        bookmarks: bookmarks ?? this.bookmarks,
-        notes: notes ?? this.notes,
-        contentHash: contentHash ?? this.contentHash,
-        processingVersion: processingVersion ?? this.processingVersion,
-      );
+  }) => LibraryEntry(
+    id: id,
+    title: title ?? this.title,
+    source: source,
+    cacheBlocksPath: cacheBlocksPath,
+    wordCount: wordCount ?? this.wordCount,
+    pageCount: pageCount ?? this.pageCount,
+    importedAt: importedAt ?? this.importedAt,
+    originalPath: originalPath,
+    hasTextLayer: hasTextLayer ?? this.hasTextLayer,
+    pdfPath: pdfPath,
+    readingCharOffset: readingCharOffset ?? this.readingCharOffset,
+    ttsCharOffset: ttsCharOffset ?? this.ttsCharOffset,
+    bookmarks: bookmarks ?? this.bookmarks,
+    notes: notes ?? this.notes,
+    pdfOutline: pdfOutline ?? this.pdfOutline,
+    contentHash: contentHash ?? this.contentHash,
+    processingVersion: processingVersion ?? this.processingVersion,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'source': source.name,
-        'cacheBlocksPath': cacheBlocksPath,
-        'wordCount': wordCount,
-        'pageCount': pageCount,
-        'importedAt': importedAt.toIso8601String(),
-        'originalPath': originalPath,
-        'hasTextLayer': hasTextLayer,
-        'pdfPath': pdfPath,
-        'readingCharOffset': readingCharOffset,
-        'ttsCharOffset': ttsCharOffset,
-        'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
-        'notes': notes.map((n) => n.toJson()).toList(),
-        'contentHash': contentHash,
-        'processingVersion': processingVersion,
-      };
+    'id': id,
+    'title': title,
+    'source': source.name,
+    'cacheBlocksPath': cacheBlocksPath,
+    'wordCount': wordCount,
+    'pageCount': pageCount,
+    'importedAt': importedAt.toIso8601String(),
+    'originalPath': originalPath,
+    'hasTextLayer': hasTextLayer,
+    'pdfPath': pdfPath,
+    'readingCharOffset': readingCharOffset,
+    'ttsCharOffset': ttsCharOffset,
+    'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
+    'notes': notes.map((n) => n.toJson()).toList(),
+    'pdfOutline': pdfOutline.map((o) => o.toJson()).toList(),
+    'contentHash': contentHash,
+    'processingVersion': processingVersion,
+  };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> j) => LibraryEntry(
-        id: j['id'] as String,
-        title: j['title'] as String? ?? 'Untitled',
-        source: DocSource.values.firstWhere(
-          (s) => s.name == j['source'],
-          orElse: () => DocSource.txt,
-        ),
-        cacheBlocksPath: j['cacheBlocksPath'] as String,
-        wordCount: (j['wordCount'] as num?)?.toInt() ?? 0,
-        pageCount: (j['pageCount'] as num?)?.toInt() ?? 0,
-        importedAt: DateTime.tryParse(j['importedAt'] as String? ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-        originalPath: j['originalPath'] as String?,
-        hasTextLayer: j['hasTextLayer'] as bool? ?? true,
-        pdfPath: j['pdfPath'] as String?,
-        readingCharOffset: (j['readingCharOffset'] as num?)?.toInt() ?? 0,
-        ttsCharOffset: (j['ttsCharOffset'] as num?)?.toInt() ?? 0,
-        bookmarks: _decodeSafe(j['bookmarks'], Bookmark.fromJson),
-        notes: _decodeSafe(j['notes'], Note.fromJson),
-        contentHash: j['contentHash'] as String? ?? '',
-        processingVersion: (j['processingVersion'] as num?)?.toInt() ?? 0,
-      );
+    id: j['id'] as String,
+    title: j['title'] as String? ?? 'Untitled',
+    source: DocSource.values.firstWhere(
+      (s) => s.name == j['source'],
+      orElse: () => DocSource.txt,
+    ),
+    cacheBlocksPath: j['cacheBlocksPath'] as String,
+    wordCount: (j['wordCount'] as num?)?.toInt() ?? 0,
+    pageCount: (j['pageCount'] as num?)?.toInt() ?? 0,
+    importedAt:
+        DateTime.tryParse(j['importedAt'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+    originalPath: j['originalPath'] as String?,
+    hasTextLayer: j['hasTextLayer'] as bool? ?? true,
+    pdfPath: j['pdfPath'] as String?,
+    readingCharOffset: (j['readingCharOffset'] as num?)?.toInt() ?? 0,
+    ttsCharOffset: (j['ttsCharOffset'] as num?)?.toInt() ?? 0,
+    bookmarks: _decodeSafe(j['bookmarks'], Bookmark.fromJson),
+    notes: _decodeSafe(j['notes'], Note.fromJson),
+    pdfOutline: _decodeSafe(j['pdfOutline'], OutlineItem.fromJson),
+    contentHash: j['contentHash'] as String? ?? '',
+    processingVersion: (j['processingVersion'] as num?)?.toInt() ?? 0,
+  );
 
   /// Decodes a list of nested metadata items tolerantly: items that are not
   /// Maps or that [fromJson] rejects are skipped rather than aborting the

@@ -37,7 +37,7 @@ Redefined with the product owner. Building in this order:
 - [x] **Structured PDF text**: on-device extractor rebuilds headings & paragraphs
       (PdfBox subclass), strips running headers/footers, de-hyphenates — see
       docs/PDF_PARSING.md
-- [ ] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
+- [x] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
       overview; tap a chapter to jump to it
 - [ ] **Manual highlighting**: finger-select text, colored highlights saved per
       book, revisitable list  *(queued)*

@@ -11,6 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -160,6 +161,7 @@ class MainActivity : FlutterActivity() {
                         "blocks" to blocks,
                         "pageCount" to doc.numberOfPages,
                         "hasText" to blocks.isNotEmpty(),
+                        "outline" to extractOutline(doc),
                     )
                     mainHandler.post { result.success(payload) }
                 }
@@ -169,6 +171,38 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    private fun extractOutline(doc: PDDocument): List<Map<String, Any>> {
+        val root = doc.documentCatalog.documentOutline ?: return emptyList()
+        val out = mutableListOf<Map<String, Any>>()
+
+        fun visit(item: PDOutlineItem?, level: Int) {
+            var cur = item
+            while (cur != null) {
+                val title = cur.title?.trim().orEmpty()
+                val page = outlinePageIndex(doc, cur)
+                if (title.isNotEmpty() && page >= 0) {
+                    out.add(
+                        mapOf(
+                            "title" to title,
+                            "level" to level.coerceIn(1, 3),
+                            "page" to page,
+                        )
+                    )
+                }
+                visit(cur.firstChild, level + 1)
+                cur = cur.nextSibling
+            }
+        }
+
+        visit(root.firstChild, 1)
+        return out
+    }
+
+    private fun outlinePageIndex(doc: PDDocument, item: PDOutlineItem): Int {
+        val page = item.findDestinationPage(doc) ?: return -1
+        return doc.pages.indexOf(page)
     }
 
     private fun renderPage(

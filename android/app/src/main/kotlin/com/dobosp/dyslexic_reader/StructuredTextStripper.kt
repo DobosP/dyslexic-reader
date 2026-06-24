@@ -72,7 +72,7 @@ class StructuredTextStripper : PDFTextStripper() {
     }
 
     /** Run the structure heuristics and return typed blocks. */
-    fun buildBlocks(): List<Map<String, String>> {
+    fun buildBlocks(): List<Map<String, Any>> {
         if (lines.isEmpty()) return emptyList()
 
         val kept = dropRunningHeadersFooters(lines)
@@ -86,18 +86,26 @@ class StructuredTextStripper : PDFTextStripper() {
         val types = ArrayList<String>(kept.size)
         for (i in kept.indices) types.add(classify(kept, i, tiers, medianAdvance))
 
-        val blocks = mutableListOf<Map<String, String>>()
+        val blocks = mutableListOf<Map<String, Any>>()
         var curType: String? = null
         val curText = StringBuilder()
+        var curPage = -1
         var prev: LineInfo? = null
 
         fun flush() {
             val type = curType
             if (type != null && curText.isNotBlank()) {
-                blocks.add(mapOf("type" to type, "text" to curText.toString().trim()))
+                blocks.add(
+                    mapOf(
+                        "type" to type,
+                        "text" to curText.toString().trim(),
+                        "page" to (curPage - 1).coerceAtLeast(0),
+                    )
+                )
             }
             curText.setLength(0)
             curType = null
+            curPage = -1
         }
 
         for (i in kept.indices) {
@@ -116,6 +124,7 @@ class StructuredTextStripper : PDFTextStripper() {
             if (startNew) {
                 flush()
                 curType = type
+                curPage = line.page
                 curText.append(line.text)
             } else {
                 appendDeHyphenated(curText, line.text)

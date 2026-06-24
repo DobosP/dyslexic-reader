@@ -36,8 +36,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   // Highlight is driven via a notifier so updates repaint only the visible
   // paragraphs (smooth, in sync with scrolling).
-  final ValueNotifier<ReadingHighlight> _highlight =
-      ValueNotifier(ReadingHighlight.none);
+  final ValueNotifier<ReadingHighlight> _highlight = ValueNotifier(
+    ReadingHighlight.none,
+  );
 
   ReadingDocument? _effectiveDoc;
   bool? _lastPacing;
@@ -68,8 +69,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   ReadingDocument _resolveDoc(bool pacing) {
     if (_effectiveDoc == null || _lastPacing != pacing) {
       _lastPacing = pacing;
-      _effectiveDoc =
-          pacing ? Sentences.splitDocument(widget.document) : widget.document;
+      _effectiveDoc = pacing
+          ? Sentences.splitDocument(widget.document)
+          : widget.document;
     }
     return _effectiveDoc!;
   }
@@ -182,7 +184,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       if (anchor < 0) {
         // Resume from the last spoken position when starting fresh.
         final saved =
-            _liveEntry(ref.read(libraryControllerProvider).valueOrNull)?.ttsCharOffset ?? 0;
+            _liveEntry(
+              ref.read(libraryControllerProvider).valueOrNull,
+            )?.ttsCharOffset ??
+            0;
         anchor = saved > 0 ? saved : _pageCtrl.currentOffset;
       }
       final start = _pageCtrl.chunkAt(anchor);
@@ -293,8 +298,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     if (!_playing || _hlStart < 0) return;
     await _tts?.stop();
     if (!mounted) return;
-    final target =
-        seconds >= 0 ? _chunkAfterSeconds(seconds) : _chunkBeforeSeconds(-seconds);
+    final target = seconds >= 0
+        ? _chunkAfterSeconds(seconds)
+        : _chunkBeforeSeconds(-seconds);
     if (target != null) _speak(target);
   }
 
@@ -378,7 +384,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       key: _scaffoldKey,
       backgroundColor: palette.background,
       endDrawer: OutlineDrawer(
-        outline: _outline ??= DocumentStructure.outline(widget.document),
+        outline: _outline ??= entry?.pdfOutline.isNotEmpty == true
+            ? entry!.pdfOutline
+            : DocumentStructure.outline(widget.document),
         stats: _stats ??= DocumentStructure.stats(widget.document),
         onJump: _pageCtrl.jumpToOffset,
       ),
@@ -430,7 +438,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         style: prefs.rulerStyle,
                         palette: palette,
                         bandHeight:
-                            prefs.fontSizeSp * prefs.lineHeight * prefs.rulerRows + 8,
+                            prefs.fontSizeSp *
+                                prefs.lineHeight *
+                                prefs.rulerRows +
+                            8,
                         center: prefs.rulerCenter,
                       ),
                     ),
@@ -496,7 +507,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       showDragHandle: true,
       builder: (context) => Consumer(
         builder: (context, ref, _) {
-          final wpm = ref.watch(readingPrefsProvider.select((p) => p.readingWpm));
+          final wpm = ref.watch(
+            readingPrefsProvider.select((p) => p.readingWpm),
+          );
           return Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: Column(
@@ -549,8 +562,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         ),
         IconButton(
           tooltip: 'Reading focus',
-          icon: Icon(Icons.center_focus_strong,
-              color: focusOn ? palette.accent : null),
+          icon: Icon(
+            Icons.center_focus_strong,
+            color: focusOn ? palette.accent : null,
+          ),
           onPressed: _focusSheet,
         ),
         if (entry != null)
@@ -565,7 +580,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           itemBuilder: (_) => [
             _menuItem('contents', Icons.toc, 'Contents'),
             if (canViewOriginal)
-              _menuItem('original', Icons.picture_as_pdf_outlined, 'Original pages'),
+              _menuItem(
+                'original',
+                Icons.picture_as_pdf_outlined,
+                'Original pages',
+              ),
             _menuItem('settings', Icons.tune, 'Reading settings'),
             _menuItem('about', Icons.info_outline, 'About'),
           ],
@@ -590,22 +609,24 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       case 'contents':
         _scaffoldKey.currentState?.openEndDrawer();
       case 'settings':
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-        );
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
       case 'about':
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
-        );
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const AboutScreen()));
       case 'original':
         if (entry?.pdfPath != null) {
-          Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => OriginalPdfScreen(
-              title: widget.document.title,
-              pdfPath: entry!.pdfPath!,
-              pageCount: entry.pageCount,
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => OriginalPdfScreen(
+                title: widget.document.title,
+                pdfPath: entry!.pdfPath!,
+                pageCount: entry.pageCount,
+              ),
             ),
-          ));
+          );
         }
     }
   }
@@ -632,7 +653,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         decoration: InputDecoration(
           hintText: 'Search in document',
           border: InputBorder.none,
-          hintStyle: TextStyle(color: palette.onBackground.withValues(alpha: 0.5)),
+          hintStyle: TextStyle(
+            color: palette.onBackground.withValues(alpha: 0.5),
+          ),
         ),
         onChanged: _runSearch,
         onSubmitted: (_) {
@@ -726,12 +749,21 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   void _addBookmark(LibraryEntry entry) {
     final offset = _pageCtrl.currentOffset;
-    ref.read(libraryControllerProvider.notifier).addBookmark(
+    ref
+        .read(libraryControllerProvider.notifier)
+        .addBookmark(
           entry.id,
-          Bookmark(offset: offset, label: _snippet(offset), createdAt: DateTime.now()),
+          Bookmark(
+            offset: offset,
+            label: _snippet(offset),
+            createdAt: DateTime.now(),
+          ),
         );
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Bookmark saved'), duration: Duration(seconds: 1)),
+      const SnackBar(
+        content: Text('Bookmark saved'),
+        duration: Duration(seconds: 1),
+      ),
     );
   }
 
@@ -741,7 +773,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       showDragHandle: true,
       builder: (sheetContext) => Consumer(
         builder: (context, ref, _) {
-          final list = ref.watch(libraryControllerProvider).valueOrNull ?? const [];
+          final list =
+              ref.watch(libraryControllerProvider).valueOrNull ?? const [];
           LibraryEntry? entry;
           for (final e in list) {
             if (e.id == id) entry = e;
@@ -750,7 +783,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           if (bookmarks.isEmpty) {
             return const Padding(
               padding: EdgeInsets.all(24),
-              child: Text('No bookmarks yet. Tap the bookmark icon to save your place.'),
+              child: Text(
+                'No bookmarks yet. Tap the bookmark icon to save your place.',
+              ),
             );
           }
           return ListView(
@@ -759,7 +794,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               for (final b in bookmarks)
                 ListTile(
                   leading: const Icon(Icons.bookmark_outline),
-                  title: Text(b.label, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  title: Text(
+                    b.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () => ref
@@ -783,7 +822,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   void _onTextTap(int start, int end) {
     final entry = widget.entry;
     if (entry == null) return;
-    final live = _liveEntry(ref.read(libraryControllerProvider).valueOrNull) ?? entry;
+    final live =
+        _liveEntry(ref.read(libraryControllerProvider).valueOrNull) ?? entry;
     Note? existing;
     for (final n in live.notes) {
       if (n.start == start && n.end == end) {
@@ -791,16 +831,18 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         break;
       }
     }
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => NoteEditorScreen(
-        entryId: entry.id,
-        start: start,
-        end: end,
-        snippet: _snippet(start),
-        initialText: existing?.text ?? '',
-        isEditing: existing != null,
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NoteEditorScreen(
+          entryId: entry.id,
+          start: start,
+          end: end,
+          snippet: _snippet(start),
+          initialText: existing?.text ?? '',
+          isEditing: existing != null,
+        ),
       ),
-    ));
+    );
   }
 
   /// Add a note at the current reading position — a screen-reader-friendly
@@ -831,9 +873,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   void _openFullSettings(BuildContext sheetContext) {
     Navigator.of(sheetContext).pop();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
   }
 
   /// Text & display: the few most-used type controls, with a link to the rest.

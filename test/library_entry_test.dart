@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dyslexic_reader/domain/models/library_entry.dart';
+import 'package:dyslexic_reader/domain/structure/document_structure.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -25,6 +26,10 @@ void main() {
             createdAt: DateTime.parse('2026-01-03T00:00:00.000'),
           ),
         ],
+        pdfOutline: const [
+          OutlineItem(title: 'Chapter 1', level: 1, offset: 0),
+          OutlineItem(title: 'Section 1.1', level: 2, offset: 400),
+        ],
       ),
     ];
     final back = LibraryEntry.decodeList(LibraryEntry.encodeList(entries));
@@ -37,38 +42,47 @@ void main() {
     expect(e.bookmarks, hasLength(1));
     expect(e.bookmarks.first.offset, 100);
     expect(e.bookmarks.first.label, 'Chapter 2');
+    expect(e.pdfOutline, hasLength(2));
+    expect(e.pdfOutline.last.title, 'Section 1.1');
+    expect(e.pdfOutline.last.level, 2);
+    expect(e.pdfOutline.last.offset, 400);
   });
 
-  test('round-trip preserves notes, ttsCharOffset, contentHash, processingVersion', () {
-    final original = LibraryEntry(
-      id: '42',
-      title: 'Rich Doc',
-      source: DocSource.docx,
-      cacheBlocksPath: '/c/42.json',
-      wordCount: 500,
-      pageCount: 10,
-      importedAt: DateTime.parse('2026-03-01T10:00:00.000'),
-      ttsCharOffset: 1234,
-      contentHash: 'abc123',
-      processingVersion: 3,
-      notes: [
-        Note(
-          start: 50,
-          end: 80,
-          text: 'Interesting',
-          createdAt: DateTime.parse('2026-03-02T08:00:00.000'),
-        ),
-      ],
-    );
-    final back = LibraryEntry.decodeList(LibraryEntry.encodeList([original])).first;
-    expect(back.ttsCharOffset, 1234);
-    expect(back.contentHash, 'abc123');
-    expect(back.processingVersion, 3);
-    expect(back.notes, hasLength(1));
-    expect(back.notes.first.start, 50);
-    expect(back.notes.first.end, 80);
-    expect(back.notes.first.text, 'Interesting');
-  });
+  test(
+    'round-trip preserves notes, ttsCharOffset, contentHash, processingVersion',
+    () {
+      final original = LibraryEntry(
+        id: '42',
+        title: 'Rich Doc',
+        source: DocSource.docx,
+        cacheBlocksPath: '/c/42.json',
+        wordCount: 500,
+        pageCount: 10,
+        importedAt: DateTime.parse('2026-03-01T10:00:00.000'),
+        ttsCharOffset: 1234,
+        contentHash: 'abc123',
+        processingVersion: 3,
+        notes: [
+          Note(
+            start: 50,
+            end: 80,
+            text: 'Interesting',
+            createdAt: DateTime.parse('2026-03-02T08:00:00.000'),
+          ),
+        ],
+      );
+      final back = LibraryEntry.decodeList(
+        LibraryEntry.encodeList([original]),
+      ).first;
+      expect(back.ttsCharOffset, 1234);
+      expect(back.contentHash, 'abc123');
+      expect(back.processingVersion, 3);
+      expect(back.notes, hasLength(1));
+      expect(back.notes.first.start, 50);
+      expect(back.notes.first.end, 80);
+      expect(back.notes.first.text, 'Interesting');
+    },
+  );
 
   test('malformed bookmark items are skipped; valid ones are preserved', () {
     final json = jsonEncode([
@@ -81,12 +95,16 @@ void main() {
         'pageCount': 0,
         'importedAt': '2026-01-01T00:00:00.000',
         'bookmarks': [
-          null,                        // null — not a Map
-          'bad string',                // String — not a Map
-          42,                          // int — not a Map
-          {'offset': 99, 'label': 'Good', 'createdAt': '2026-01-02T00:00:00.000'},
+          null, // null — not a Map
+          'bad string', // String — not a Map
+          42, // int — not a Map
+          {
+            'offset': 99,
+            'label': 'Good',
+            'createdAt': '2026-01-02T00:00:00.000',
+          },
         ],
-      }
+      },
     ]);
     final entries = LibraryEntry.decodeList(json);
     expect(entries, hasLength(1));
@@ -107,15 +125,45 @@ void main() {
         'importedAt': '2026-01-01T00:00:00.000',
         'notes': [
           null,
-          {'start': 10, 'end': 20, 'text': 'Keep', 'createdAt': '2026-01-03T00:00:00.000'},
+          {
+            'start': 10,
+            'end': 20,
+            'text': 'Keep',
+            'createdAt': '2026-01-03T00:00:00.000',
+          },
           'oops',
         ],
-      }
+      },
     ]);
     final entries = LibraryEntry.decodeList(json);
     expect(entries, hasLength(1));
     expect(entries.first.notes, hasLength(1));
     expect(entries.first.notes.first.text, 'Keep');
+  });
+
+  test('malformed PDF outline items are skipped; valid ones are preserved', () {
+    final json = jsonEncode([
+      {
+        'id': '4',
+        'title': 'PDF',
+        'source': 'pdf',
+        'cacheBlocksPath': '/p',
+        'wordCount': 1,
+        'pageCount': 2,
+        'importedAt': '2026-01-01T00:00:00.000',
+        'pdfOutline': [
+          null,
+          'bad',
+          {'title': 'Good', 'level': 2, 'offset': 123},
+        ],
+      },
+    ]);
+    final entries = LibraryEntry.decodeList(json);
+    expect(entries, hasLength(1));
+    expect(entries.first.pdfOutline, hasLength(1));
+    expect(entries.first.pdfOutline.first.title, 'Good');
+    expect(entries.first.pdfOutline.first.level, 2);
+    expect(entries.first.pdfOutline.first.offset, 123);
   });
 
   test('all-malformed bookmark list decodes to empty without throwing', () {
@@ -129,7 +177,7 @@ void main() {
         'pageCount': 0,
         'importedAt': '2026-01-01T00:00:00.000',
         'bookmarks': [null, 'x', 7],
-      }
+      },
     ]);
     final entries = LibraryEntry.decodeList(json);
     expect(entries, hasLength(1));
@@ -149,6 +197,7 @@ void main() {
     expect(e.source, DocSource.txt);
     expect(e.readingCharOffset, 0);
     expect(e.bookmarks, isEmpty);
+    expect(e.pdfOutline, isEmpty);
   });
 
   test('copyWith updates reading offset without touching other fields', () {
@@ -166,5 +215,6 @@ void main() {
     expect(moved.title, 'Doc');
     expect(moved.id, e.id);
     expect(moved.bookmarks, isEmpty);
+    expect(moved.pdfOutline, isEmpty);
   });
 }

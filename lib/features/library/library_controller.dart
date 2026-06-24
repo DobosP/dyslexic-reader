@@ -11,7 +11,9 @@ import '../../core/platform/pdf_text_channel.dart';
 import '../../data/services/ocr_service.dart';
 import '../../domain/models/library_entry.dart';
 import '../../domain/models/reading_document.dart';
+import '../../domain/reflow/text_cleanup.dart';
 import '../../domain/reflow/tokenizer.dart';
+import '../../domain/structure/document_structure.dart';
 import 'library_index_store.dart';
 
 /// Reports OCR progress (pages done / total, with an optional status label) so
@@ -27,7 +29,7 @@ class ImportException implements Exception {
 
 /// Bump when the extraction/OCR pipeline changes, so re-importing an existing
 /// document refreshes its cached text in place instead of keeping the old one.
-const int _kProcessingVersion = 1;
+const int _kProcessingVersion = 2;
 
 /// Owns the on-device document library: a JSON index plus a cached **typed
 /// blocks** file per document (and, for PDFs, a copied original).
@@ -59,7 +61,9 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
         try {
           final f = File(e.pdfPath!);
           if (await f.exists()) {
-            out.add(e.copyWith(contentHash: _contentHash(await f.readAsBytes())));
+            out.add(
+              e.copyWith(contentHash: _contentHash(await f.readAsBytes())),
+            );
             changed = true;
             continue;
           }
@@ -98,7 +102,10 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     return openFile(acceptedTypeGroups: [group]);
   }
 
-  Future<LibraryEntry> importPicked(XFile file, {OcrProgress? onOcrProgress}) async {
+  Future<LibraryEntry> importPicked(
+    XFile file, {
+    OcrProgress? onOcrProgress,
+  }) async {
     if (file.path.isEmpty) {
       throw const ImportException('Could not read the selected file.');
     }
@@ -140,6 +147,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
           pdfBytes: bytes,
           pageCount: res.pageCount,
           contentHash: hash,
+          pdfOutline: _outlineForBlocks(res.pdfBlocks, res.outline),
         );
       }
       // Scanned / image-only PDF → OCR each page on-device.
@@ -159,7 +167,9 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     if (ext == 'docx') {
       final blocks = _docxBlocks(bytes);
       if (blocks.isEmpty) {
-        throw const ImportException('Could not read text from this Word document.');
+        throw const ImportException(
+          'Could not read text from this Word document.',
+        );
       }
       return _store(
         title: title,
@@ -223,7 +233,10 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
 
   /// Re-run extraction/OCR for an existing document and open the refreshed
   /// result, without re-uploading. Re-reads the stored PDF copy.
-  Future<LibraryEntry> reprocess(LibraryEntry e, {OcrProgress? onOcrProgress}) async {
+  Future<LibraryEntry> reprocess(
+    LibraryEntry e, {
+    OcrProgress? onOcrProgress,
+  }) async {
     final pdf = e.pdfPath;
     if (e.source == DocSource.pdf && pdf != null && await File(pdf).exists()) {
       return _reprocessFrom(e, pdf, onOcrProgress);
@@ -259,14 +272,17 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     List<TextBlock> blocks;
     var hasText = true;
     var pageCount = e.pageCount;
+    var pdfOutline = e.pdfOutline;
     if (e.source == DocSource.pdf) {
       final res = await const PdfTextChannel().extractText(path);
       pageCount = res.pageCount;
       if (res.hasText) {
         blocks = res.blocks;
+        pdfOutline = _outlineForBlocks(res.pdfBlocks, res.outline);
       } else {
         blocks = await _ocrPdf(path, res.pageCount, onProgress);
         hasText = blocks.isNotEmpty;
+        pdfOutline = const [];
       }
     } else if (e.source == DocSource.docx) {
       blocks = _docxBlocks(await File(path).readAsBytes());
@@ -279,6 +295,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       wordCount: Tokenizer.fromBlocks(blocks).wordCount,
       pageCount: pageCount,
       hasTextLayer: hasText,
+      pdfOutline: pdfOutline,
       processingVersion: _kProcessingVersion,
       importedAt: DateTime.now(),
     );
@@ -303,7 +320,11 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   }
 
   /// Render each page (native PdfRenderer) and OCR it into body blocks.
-  Future<List<TextBlock>> _ocrPdf(String path, int pageCount, OcrProgress? onProgress) async {
+  Future<List<TextBlock>> _ocrPdf(
+    String path,
+    int pageCount,
+    OcrProgress? onProgress,
+  ) async {
     if (pageCount <= 0) return const [];
     const channel = PdfTextChannel();
     final ocr = await _resolveOcrEngine(onProgress);
@@ -315,7 +336,9 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
         // Render at higher resolution than the on-screen view for better OCR accuracy.
         final png = await channel.renderPage(path, i, targetWidth: 2200);
         if (png == null) continue;
-        final tmp = File('${tmpDir.path}/ocr_${DateTime.now().microsecondsSinceEpoch}_$i.png');
+        final tmp = File(
+          '${tmpDir.path}/ocr_${DateTime.now().microsecondsSinceEpoch}_$i.png',
+        );
         await tmp.writeAsBytes(png);
         try {
           for (final text in await ocr.recognizeBlocks(tmp.path)) {
@@ -359,6 +382,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     List<int>? pdfBytes,
     int pageCount = 0,
     String contentHash = '',
+    List<OutlineItem> pdfOutline = const [],
   }) async {
     final root = _root;
     if (root == null) throw const ImportException('Storage is not available.');
@@ -385,6 +409,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
       originalPath: originalPath,
       hasTextLayer: hasTextLayer,
       pdfPath: pdfPath,
+      pdfOutline: pdfOutline,
       contentHash: contentHash,
       processingVersion: _kProcessingVersion,
     );
@@ -396,8 +421,54 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   }
 
   Future<ReadingDocument> open(LibraryEntry e) async {
-    final blocks = TextBlock.decodeList(await File(e.cacheBlocksPath).readAsString());
+    final blocks = TextBlock.decodeList(
+      await File(e.cacheBlocksPath).readAsString(),
+    );
     return Tokenizer.fromBlocks(blocks, title: e.title);
+  }
+
+  List<OutlineItem> _outlineForBlocks(
+    List<PdfTextBlock> blocks,
+    List<PdfOutlineDestination> outline,
+  ) {
+    if (blocks.isEmpty || outline.isEmpty) return const [];
+
+    final pageOffsets = <int, int>{};
+    var offset = 0;
+    for (var i = 0; i < blocks.length; i++) {
+      final block = blocks[i];
+      if (block.pageIndex >= 0) {
+        pageOffsets.putIfAbsent(block.pageIndex, () => offset);
+      }
+      offset += TextCleanup.clean(block.block.text).length;
+      if (i < blocks.length - 1) offset += 2; // Tokenizer.fromBlocks separator.
+    }
+    if (pageOffsets.isEmpty) return const [];
+
+    int? offsetForPage(int pageIndex) {
+      if (pageIndex < 0) return null;
+      final exact = pageOffsets[pageIndex];
+      if (exact != null) return exact;
+      for (var page = pageIndex + 1; page <= pageIndex + 20; page++) {
+        final next = pageOffsets[page];
+        if (next != null) return next;
+      }
+      for (var page = pageIndex - 1; page >= 0; page--) {
+        final prev = pageOffsets[page];
+        if (prev != null) return prev;
+      }
+      return null;
+    }
+
+    final mapped = <OutlineItem>[];
+    for (final item in outline) {
+      final target = offsetForPage(item.pageIndex);
+      if (target == null) continue;
+      mapped.add(
+        OutlineItem(title: item.title, level: item.level, offset: target),
+      );
+    }
+    return mapped;
   }
 
   Future<void> saveProgress(String id, int charOffset) async {
@@ -432,8 +503,11 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     if (idx < 0) return;
     final entry = list[idx];
     final bookmarks = entry.bookmarks
-        .where((b) =>
-            !(b.offset == bookmark.offset && b.createdAt == bookmark.createdAt))
+        .where(
+          (b) =>
+              !(b.offset == bookmark.offset &&
+                  b.createdAt == bookmark.createdAt),
+        )
         .toList();
     final next = [...list];
     next[idx] = entry.copyWith(bookmarks: bookmarks);
@@ -448,11 +522,12 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     final idx = list.indexWhere((e) => e.id == id);
     if (idx < 0) return;
     final entry = list[idx];
-    final notes = entry.notes
-        .where((n) => !(n.start == note.start && n.end == note.end))
-        .toList()
-      ..add(note)
-      ..sort((a, b) => a.start.compareTo(b.start));
+    final notes =
+        entry.notes
+            .where((n) => !(n.start == note.start && n.end == note.end))
+            .toList()
+          ..add(note)
+          ..sort((a, b) => a.start.compareTo(b.start));
     final next = [...list];
     next[idx] = entry.copyWith(notes: notes);
     await _writeIndex(next);
@@ -510,5 +585,5 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
 
 final libraryControllerProvider =
     AsyncNotifierProvider<LibraryController, List<LibraryEntry>>(
-  LibraryController.new,
-);
+      LibraryController.new,
+    );
