@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dyslexic_reader/domain/models/library_entry.dart';
@@ -179,6 +180,40 @@ void main() {
     await store.write([entry('x')]);
     expect((await store.read()).single.id, 'x');
     expect(await tmp.exists(), isFalse);
+  });
+
+  test('valid index with malformed nested bookmark items returns entry without corrupt file',
+      () async {
+    // Craft an index that is syntactically valid JSON but has non-Map values
+    // in the bookmarks list. The entry must be returned and no .corrupt file
+    // must be created — a bad nested item is not the same as a corrupt index.
+    final raw = jsonEncode([
+      {
+        'id': 'doc-with-bad-bookmarks',
+        'title': 'Good Doc',
+        'source': 'txt',
+        'cacheBlocksPath': '/cache/doc.json',
+        'wordCount': 10,
+        'pageCount': 1,
+        'importedAt': '2026-01-01T00:00:00.000',
+        'bookmarks': [
+          null,
+          'not a map',
+          {'offset': 55, 'label': 'Valid', 'createdAt': '2026-01-02T00:00:00.000'},
+        ],
+        'notes': [42, null],
+      }
+    ]);
+    await index.writeAsString(raw);
+
+    final back = await store.read();
+    expect(back, hasLength(1));
+    expect(back.first.id, 'doc-with-bad-bookmarks');
+    expect(back.first.bookmarks, hasLength(1));
+    expect(back.first.bookmarks.first.label, 'Valid');
+    expect(back.first.notes, isEmpty);
+    expect(await corrupt.exists(), isFalse,
+        reason: 'a syntactically valid index must never be treated as corrupt');
   });
 
   test('concurrent writes serialize to the last write with no temp left behind',

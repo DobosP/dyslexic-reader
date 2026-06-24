@@ -189,17 +189,30 @@ class LibraryEntry {
         pdfPath: j['pdfPath'] as String?,
         readingCharOffset: (j['readingCharOffset'] as num?)?.toInt() ?? 0,
         ttsCharOffset: (j['ttsCharOffset'] as num?)?.toInt() ?? 0,
-        bookmarks: ((j['bookmarks'] as List?) ?? const [])
-            .cast<Map<String, dynamic>>()
-            .map(Bookmark.fromJson)
-            .toList(),
-        notes: ((j['notes'] as List?) ?? const [])
-            .cast<Map<String, dynamic>>()
-            .map(Note.fromJson)
-            .toList(),
+        bookmarks: _decodeSafe(j['bookmarks'], Bookmark.fromJson),
+        notes: _decodeSafe(j['notes'], Note.fromJson),
         contentHash: j['contentHash'] as String? ?? '',
         processingVersion: (j['processingVersion'] as num?)?.toInt() ?? 0,
       );
+
+  /// Decodes a list of nested metadata items tolerantly: items that are not
+  /// Maps or that [fromJson] rejects are skipped rather than aborting the
+  /// containing entry. A single malformed bookmark or note must never cause the
+  /// whole document record to disappear from the library.
+  static List<T> _decodeSafe<T>(
+    dynamic raw,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
+    if (raw is! List) return <T>[];
+    final result = <T>[];
+    for (final item in raw) {
+      if (item is! Map<String, dynamic>) continue;
+      try {
+        result.add(fromJson(item));
+      } catch (_) {}
+    }
+    return result;
+  }
 
   static String encodeList(List<LibraryEntry> entries) =>
       jsonEncode(entries.map((e) => e.toJson()).toList());
