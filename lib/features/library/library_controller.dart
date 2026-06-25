@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:xml/xml.dart';
 
 import '../../core/platform/pdf_text_channel.dart';
+import '../../core/storage/atomic_file_writer.dart';
 import '../../data/services/ocr_service.dart';
 import '../../domain/models/library_entry.dart';
 import '../../domain/models/reading_document.dart';
@@ -290,7 +291,10 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     } else {
       blocks = Tokenizer.blocksFromText(await File(path).readAsString());
     }
-    await File(e.cacheBlocksPath).writeAsString(TextBlock.encodeList(blocks));
+    await AtomicFileWriter.writeString(
+      File(e.cacheBlocksPath),
+      TextBlock.encodeList(blocks),
+    );
     final updated = e.copyWith(
       wordCount: Tokenizer.fromBlocks(blocks).wordCount,
       pageCount: pageCount,
@@ -389,12 +393,15 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
 
     final blocksFile = File('${root.path}/$id.json');
-    await blocksFile.writeAsString(TextBlock.encodeList(blocks));
+    await AtomicFileWriter.writeString(
+      blocksFile,
+      TextBlock.encodeList(blocks),
+    );
 
     String? pdfPath;
     if (pdfBytes != null) {
       final pdfFile = File('${root.path}/$id.pdf');
-      await pdfFile.writeAsBytes(pdfBytes);
+      await AtomicFileWriter.writeBytes(pdfFile, pdfBytes);
       pdfPath = pdfFile.path;
     }
 
