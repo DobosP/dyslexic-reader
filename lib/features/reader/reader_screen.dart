@@ -169,6 +169,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   double _ttsRate() =>
       (ref.read(readingPrefsProvider).readingWpm / 360).clamp(0.2, 1.0);
 
+  double get _autoFollowAlignment {
+    final p = ref.read(readingPrefsProvider);
+    return p.rulerStyle.isBand ? p.rulerCenter : 0.3;
+  }
+
   String _chunkText(int start, int end) {
     final t = widget.document.text;
     final s = start.clamp(0, t.length);
@@ -204,7 +209,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
   void _speak(Chunk chunk) {
     _setHighlight(chunk);
-    _pageCtrl.ensureVisible(chunk.$1);
+    _pageCtrl.ensureVisible(chunk.$1, alignment: _autoFollowAlignment);
     // Speak the chunk's words joined by single spaces and record each word's
     // offset in that spoken string, so the progress callback can map back to
     // absolute document offsets for word-level highlighting.
@@ -268,6 +273,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       wordEnd: hit.$4,
       wordColor: accent.withValues(alpha: 0.5),
     );
+    _pageCtrl.ensureVisible(hit.$3, alignment: _autoFollowAlignment);
   }
 
   /// Called when the engine finishes a chunk: advance to the next one.
