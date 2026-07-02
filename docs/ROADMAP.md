@@ -4,7 +4,12 @@ Build order follows the evidence (see [RESEARCH.md](./RESEARCH.md) §1) and the
 architecture phases ([ARCHITECTURE.md](./ARCHITECTURE.md) §11). Highest-value,
 strongest-evidence features first.
 
-## Phase 0 — Foundation ✅ (current)
+**Status (2026-07-02): v1.0 launch candidate** — the shipped scope below is
+feature-complete (verified status: README.md; publishing gate:
+[PUBLISHING.md](./PUBLISHING.md)). Everything still unchecked below =
+**post-1.0 backlog**, kept on record as what is intentionally not in v1.0.
+
+## Phase 0 — Foundation ✅
 - [x] Flutter project scaffold (Android), Material 3
 - [x] `ReadingPrefs` model + JSON persistence (shared_preferences)
 - [x] Theme system: cream / sepia / off-white / dark / high-contrast (no pure white)
@@ -25,8 +30,8 @@ strongest-evidence features first.
 - [ ] Word-position extraction (for highlight/ruler) — folded into the TTS phase
 - [ ] Migrate the flat JSON library index to drift if it outgrows a single file
 
-## Phase 2 — Active reading (pages, structure, highlighting) 🚧
-Redefined with the product owner. Building in this order:
+## Phase 2 — Active reading (pages, structure, highlighting) ✅ (shipped scope; unchecked = post-1.0)
+Redefined with the product owner. Built in this order:
 - [x] **Pages & progress**: paginate into screen-fit pages (swipe/turn); remember
       reading position (char-offset based, survives font changes); bookmarks
 - [x] **Fast loading**: incremental (lazy) pagination — first page(s) open
@@ -40,7 +45,7 @@ Redefined with the product owner. Building in this order:
 - [x] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
       overview; tap a chapter to jump to it
 - [ ] **Manual highlighting**: finger-select text, colored highlights saved per
-      book, revisitable list  *(queued)*
+      book, revisitable list  *(post-1.0 backlog)*
 - [ ] **AI summary**: whole-book / per-chapter summaries  *(parked — revisit cloud powering + API key)*
 - [x] **Read-aloud (text-to-speech)**: chunk-level highlight synced to playback,
       ±15s skip, resume where paused, in-reader speed control (`flutter_tts`)
@@ -54,10 +59,10 @@ Redefined with the product owner. Building in this order:
 ## Phase 3 — Reading ruler / line focus ✅
 - [x] Ruler styles: tint bar / underline / shade / spotlight (CHI-2023 set)
 - [x] Draggable focus band; text scrolls underneath (typoscope)
-- [ ] Auto-follow the current read-aloud line — *fast-follow 1.1*
+- [x] Auto-follow the current read-aloud line — shipped (0020d31, 2026-06-27)
 
-## Phase 4 — OCR + multilingual
-- [ ] `google_mlkit_text_recognition` for scanned/image PDFs (auto-detect no text layer)
+## Phase 4 — OCR + multilingual 🚧 (OCR shipped; the rest = post-1.0)
+- [x] `google_mlkit_text_recognition` for scanned/image PDFs (auto-detect no text layer) — shipped (4fb9650)
 - [ ] `google_mlkit_language_id` → auto-pick TTS voice + OCR script
 - [ ] RTL (Arabic/Hebrew) reflow; Tesseract/cloud OCR for non-Latin scripts
 
@@ -75,5 +80,8 @@ Redefined with the product owner. Building in this order:
 ## Cross-cutting
 - [ ] iOS target (Flutter makes this incremental once native bridges have iOS impls)
 - [ ] Localized UI (`flutter_localizations`)
-- [ ] Accessibility pass (TalkBack, dynamic type, contrast)
-- [ ] Play Store listing assets + privacy policy (when publishing publicly)
+- [x] Accessibility pass (TalkBack, dynamic type, contrast) — shipped (a924568)
+- [x] Play Store listing assets + privacy policy — listing copy, feature graphic,
+      icon & policy text done (docs/STORE_LISTING.md, docs/store/,
+      docs/PRIVACY_POLICY.md); screenshots + hosted policy URL still in flight —
+      see docs/PUBLISHING.md

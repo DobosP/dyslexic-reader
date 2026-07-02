@@ -261,15 +261,21 @@ syllableEnabled, highlightWord/Sentence.
 
 ## 11. Phased roadmap (maps to RESEARCH build‑order)
 
-| Phase | Deliverable | Features |
-|---|---|---|
-| **0 — Foundation** *(this PR)* | Building, deployable scaffold | Project skeleton, theme system, settings model, **plain‑text reflow reader with adjustable spacing/typography/themes**, CI → signed APK. |
-| **1 — PDF** | Open real PDFs | Native PdfBox bridge, text‑layer detection, reflow of born‑digital PDFs, library/import. |
-| **2 — TTS** *(highest value)* | Read aloud + highlight | Native TTS bridge, word/sentence highlight sync, speed/voice controls, sentence‑level fallback. |
-| **3 — Reading ruler** | Line focus | Ruler styles (bar/lightbox/shade/underline) following scroll & TTS line. |
-| **4 — OCR + multilingual** | Scanned PDFs & languages | ML Kit OCR, language auto‑detect → voice/script, RTL. |
-| **5 — Extras** | Personalization | BeeLine gradient, RSVP, syllables, OpenDyslexic, optional bionic toggle. |
-| **6 — Cloud (opt‑in)** | Premium tier | Offline neural (sherpa_onnx) and/or cloud voices + cloud OCR for non‑Latin. |
+**Status (2026-07-02): v1.0 launch candidate.** Phases 0–3 are shipped (incl.
+auto-follow of the read-aloud line, 0020d31, and the accessibility/TalkBack pass,
+a924568). Phase 4's OCR is shipped (4fb9650); **language-ID and RTL are not
+implemented**. Phases 5–6 are post-1.0 backlog. Checkbox-level detail lives in
+[ROADMAP.md](./ROADMAP.md); verified feature status in the README.
+
+| Phase | Status | Deliverable | Features |
+|---|---|---|---|
+| **0 — Foundation** | ✅ shipped | Building, deployable scaffold | Project skeleton, theme system, settings model, **plain‑text reflow reader with adjustable spacing/typography/themes**, CI → signed APK. |
+| **1 — PDF** | ✅ shipped | Open real PDFs | Native PdfBox bridge, text‑layer detection, reflow of born‑digital PDFs, library/import. |
+| **2 — TTS** *(highest value)* | ✅ shipped | Read aloud + highlight | Word/sentence highlight sync (`flutter_tts` progress handler), speed/voice/pitch controls, chunk‑level fallback. |
+| **3 — Reading ruler** | ✅ shipped | Line focus | Ruler styles (bar/lightbox/shade/underline) following scroll & TTS line; auto‑follow (0020d31). |
+| **4 — OCR + multilingual** | 🚧 OCR shipped (4fb9650); lang‑ID + RTL **not implemented** | Scanned PDFs & languages | ML Kit OCR ✅; language auto‑detect → voice/script and RTL remain post‑1.0. |
+| **5 — Extras** | post‑1.0 backlog | Personalization | BeeLine gradient, RSVP, syllables, OpenDyslexic, optional bionic toggle. |
+| **6 — Cloud (opt‑in)** | post‑1.0 backlog | Premium tier | Offline neural (sherpa_onnx) and/or cloud voices + cloud OCR for non‑Latin. |
 
 ---
 

@@ -1,3 +1,5 @@
+> **Reference document (immutable tier) — evidence base, not a status doc.**
+
 # Research Synthesis — Dyslexia‑Friendly Reading App
 
 > Compiled for the **dyslexic‑reader** project. Three areas were researched: (1) the

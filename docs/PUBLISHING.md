@@ -1,5 +1,11 @@
 # Publishing Guide — Dyslexic Reader to Google Play (Free)
 
+> **STATUS NOTE (2026-07-02):** The publishing path for this app is the Google
+> Play **organization** account (per the org plan). Organization accounts are
+> **exempt** from the personal-account 12-tester / 14-day closed-testing gate
+> (Step 7). The personal-account procedure below is kept for reference and
+> applies only if publishing under a personal account.
+
 A zero-to-published, step-by-step guide. Follow it top to bottom. The two slow,
 calendar-time gates — **identity verification** and the **new-account 14-day
 closed-testing requirement** — are flagged with ⏳; **start those early**.
