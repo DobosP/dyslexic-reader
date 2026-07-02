@@ -1,6 +1,6 @@
 # Privacy Policy — Dyslexic Reader
 
-_Last updated: 14 June 2026_
+_Last updated: 2 July 2026_
 
 Dyslexic Reader is a free, on-device reading app. This policy explains, in plain
 language, what the app does and does not do with your information.
@@ -50,10 +50,9 @@ these limited, content-free ways:
 
 ## Children's privacy
 
-Dyslexic Reader is suitable for all ages and is designed to help people who find
-reading difficult, including children. Because the app collects no personal
-data, it does not knowingly collect information from anyone, including children
-under 13.
+Dyslexic Reader is not specifically directed to children and is not enrolled in
+Google Play's Families program. Because the app collects no personal data, it
+does not knowingly collect information from anyone, including children under 13.
 
 ## Data sharing and sale
 

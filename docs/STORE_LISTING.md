@@ -82,8 +82,8 @@ rulers have strong research support for dyslexic readers. Special fonts and
 can try — not as promises. Dyslexic Reader is a reading aid; it does not treat,
 cure, or diagnose dyslexia.
 
-Made with care for anyone who finds reading tiring — people with dyslexia, low
-vision, or anyone who simply prefers to read their own way.
+Made with care for students, adults, people with dyslexia or low vision, and
+anyone who simply prefers to read their own way.
 ```
 
 (Comfortably under 4000 characters.)
@@ -122,7 +122,7 @@ locale file ≤ 500 characters.
   if you prefer not to use a personal email)*.
 - **Privacy policy URL:** host `docs/PRIVACY_POLICY.md` publicly and paste the
   URL here (see `docs/PUBLISHING.md` §4). Placeholder until hosted:
-  `https://github.com/pauldobos6/dyslexic-reader/blob/main/docs/PRIVACY_POLICY.md`
+  `<PUBLIC_PRIVACY_POLICY_URL>`
 
 ---
 

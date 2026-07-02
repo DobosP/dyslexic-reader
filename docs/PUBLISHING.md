@@ -132,8 +132,9 @@ Play **requires a publicly reachable privacy policy URL**.
    Pages**: repo → Settings → Pages → enable for the `main` branch `/docs`
    folder (or a `gh-pages` branch). You'll get a URL like
    `https://<user>.github.io/dyslexic-reader/PRIVACY_POLICY`.
-2. Update **`kPrivacyPolicyUrl`** in `lib/app/app_info.dart` to that URL and
-   rebuild, so the in-app link matches.
+2. Update **`kPrivacyPolicyUrl`** in `lib/app/app_info.dart` to that final hosted
+   URL and rebuild, so the in-app link matches. The current repository URL is a
+   placeholder/action item, not a final Play Console privacy-policy URL.
 3. Paste the URL into Play Console → **Policy → App content → Privacy policy**.
 
 ---
@@ -280,7 +281,7 @@ Tick every box before submitting to production.
 - [ ] **Tested on a real Android device** (not just emulator): open a PDF, .docx, text, and paste; OCR a scanned PDF; read-aloud with highlighting; reading ruler; themes; bookmarks/notes
 - [ ] **Open-with / share-to verified** from another app (PDF, .docx, text intents)
 - [ ] **All launcher icon densities present** (mipmap `ic_launcher` / `ic_launcher_round` render correctly on device)
-- [ ] **Privacy policy reachable** at the hosted URL (opened in a browser) — Step 4
+- [ ] **Privacy policy reachable** at the hosted URL (opened in a browser; not the repository placeholder) — Step 4
 - [ ] **`kPrivacyPolicyUrl` updated** to the live URL and the `.aab` rebuilt — Step 4
 - [ ] **Store listing filled:** title (15/30), short desc (≤80), full desc (≤4000) — `docs/STORE_LISTING.md`
 - [ ] **Icon (512) + feature graphic (1024×500) uploaded** from `docs/store/`
