@@ -14,6 +14,7 @@ import '../settings/about_screen.dart';
 import '../settings/reading_prefs_controller.dart';
 import '../settings/settings_screen.dart';
 import '../settings/tts_voice_screen.dart';
+import '../settings/widgets/reading_pref_controls.dart';
 import 'notes_screens.dart';
 import 'original_pdf_screen.dart';
 import 'widgets/outline_drawer.dart';
@@ -898,30 +899,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             title: 'Text & display',
             children: [
               const _SheetLabel('Theme'),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final t in ReadingThemeId.values)
-                    ChoiceChip(
-                      label: Text(t.label),
-                      selected: prefs.themeId == t,
-                      onSelected: (_) => c.setTheme(t),
-                    ),
-                ],
-              ),
+              const ThemeChoiceChips(),
               const SizedBox(height: 12),
               const _SheetLabel('Font'),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final f in ReadingFontFamily.values)
-                    ChoiceChip(
-                      label: Text(f.label),
-                      selected: prefs.fontFamily == f,
-                      onSelected: (_) => c.setFont(f),
-                    ),
-                ],
-              ),
+              const FontChoiceChips(),
               const SizedBox(height: 12),
               _SheetSlider(
                 label: 'Text size',

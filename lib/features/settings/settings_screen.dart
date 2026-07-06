@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/responsive/breakpoints.dart';
 import '../../app/theme/reading_theme.dart';
 import '../../domain/reflow/tokenizer.dart';
 import '../../domain/models/reading_prefs.dart';
@@ -8,6 +9,7 @@ import '../reader/widgets/reflow_text.dart';
 import 'about_screen.dart';
 import 'reading_prefs_controller.dart';
 import 'tts_voice_screen.dart';
+import 'widgets/reading_pref_controls.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -31,9 +33,10 @@ class SettingsScreen extends ConsumerWidget {
           TextButton(onPressed: c.reset, child: const Text('Reset')),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: ResponsiveCenter(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
           Container(
             height: 150,
             decoration: BoxDecoration(
@@ -52,30 +55,10 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
           const _SectionLabel('Theme'),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final t in ReadingThemeId.values)
-                ChoiceChip(
-                  label: Text(t.label),
-                  selected: prefs.themeId == t,
-                  onSelected: (_) => c.setTheme(t),
-                ),
-            ],
-          ),
+          const ThemeChoiceChips(),
           const SizedBox(height: 20),
           const _SectionLabel('Font'),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final f in ReadingFontFamily.values)
-                ChoiceChip(
-                  label: Text(f.label),
-                  selected: prefs.fontFamily == f,
-                  onSelected: (_) => c.setFont(f),
-                ),
-            ],
-          ),
+          const FontChoiceChips(),
           const SizedBox(height: 12),
           _SliderTile(
             label: 'Text size',
@@ -266,7 +249,8 @@ class SettingsScreen extends ConsumerWidget {
               MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

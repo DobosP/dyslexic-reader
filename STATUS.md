@@ -18,6 +18,33 @@ this file > newest-dated ADR in `docs/adr/` > everything else.
 - Decisions: [`docs/adr/`](docs/adr/) (ADR-0001: PDF parsing = PdfBox-Android
   subclassed stripper).
 
+## In-flight (unmerged, UNVERIFIED — needs `flutter analyze`/`test` on a Flutter host)
+
+Branch **`feat/adaptive-responsive-ui`** — responsive/adaptive cross-device UI.
+Authored on a Windows box **without the Flutter SDK**, so static-reviewed only
+(Codex: ANALYZE-CLEAN) — NOT compiled or tested. Do not merge until
+`flutter analyze && flutter test` are green on a Flutter host. (CI `build.yml`
+also builds pushes to `claude/**` branches, if you want an APK artifact without
+merging to main.)
+
+- **Stage 1** — foundations + adaptive nav. `lib/app/responsive/breakpoints.dart`
+  (WindowSize + ResponsiveCenter), `lib/app/theme/app_tokens.dart` (AppTokens
+  ThemeExtension in `buildAppTheme`), `lib/app/app_shell.dart` (bottom
+  `NavigationBar` on phones ↔ side `NavigationRail` on tablet/landscape, Library
+  + Settings, `IndexedStack`, back-to-Library `PopScope`). `app.dart` home →
+  `AppShell`. Library/Settings centered at readable max-width on wide screens;
+  Library's silent load-error branch now shows a retry panel.
+- **Stage 2** — tablet layout + dedup. Library is now **master-detail** on
+  expanded (≥1024 dp) screens: list pane (380 dp) + reading pane that embeds
+  `ReaderScreen` for the selected entry (`_selected`/`_selectedDoc`,
+  `FutureBuilder<ReadingDocument>`, keyed by entry id); phone/medium path
+  unchanged (still pushes full-screen). Shared `ThemeChoiceChips`/`FontChoiceChips`
+  (`lib/features/settings/widgets/reading_pref_controls.dart`) now used by both
+  Settings and the reader's Text-&-display sheet (kills the duplicated chips the
+  recon flagged).
+- **Still deferred** (needs runtime eyeballing): reader TTS/app-bar chrome
+  adaptivity, `reader_screen.dart` god-widget split, full slider-control dedup.
+
 ## Role in the fleet
 
 Standalone Flutter reader app with local user-library persistence.

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../features/library/library_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/settings/reading_prefs_controller.dart';
+import 'app_shell.dart';
 import 'theme/reading_theme.dart';
 
 class DyslexicReaderApp extends ConsumerWidget {
@@ -17,7 +17,7 @@ class DyslexicReaderApp extends ConsumerWidget {
       title: 'Dyslexic Reader',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(themeId),
-      home: onboarded ? const LibraryScreen() : const OnboardingScreen(),
+      home: onboarded ? const AppShell() : const OnboardingScreen(),
     );
   }
 }
