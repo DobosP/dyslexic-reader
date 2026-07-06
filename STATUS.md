@@ -1,6 +1,6 @@
 # Status — dyslexic-reader
 
-Last verified: 2026-07-02
+Last verified: 2026-07-06
 
 Single source of current truth for this repo. On any doc conflict:
 this file > newest-dated ADR in `docs/adr/` > everything else.
@@ -10,6 +10,9 @@ this file > newest-dated ADR in `docs/adr/` > everything else.
 - **v1.0 launch candidate — feature-complete.** `README.md` §Status is the
   verified feature-status truth (OCR, .docx import, read-aloud with word sync,
   reading ruler, outline, onboarding, TalkBack pass all shipped in code).
+- Manual persisted text highlights have been recovered: saved highlight ranges
+  round-trip in the library index, can be added from long-press/current reader
+  position actions, are listed/deletable, and render inline in the reader.
 - Remaining work before release is **process, not code**, gated by
   [`docs/PUBLISHING.md`](docs/PUBLISHING.md): Play account, hosted
   privacy-policy URL, screenshots, closed test.

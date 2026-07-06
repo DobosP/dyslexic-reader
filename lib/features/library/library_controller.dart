@@ -264,7 +264,7 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
   }
 
   /// Re-extract [e] from [path] and overwrite its cached blocks, preserving the
-  /// id, bookmarks, notes, and reading positions.
+  /// id, bookmarks, notes, highlights, and reading positions.
   Future<LibraryEntry> _reprocessFrom(
     LibraryEntry e,
     String path,
@@ -552,6 +552,42 @@ class LibraryController extends AsyncNotifier<List<LibraryEntry>> {
         .toList();
     final next = [...list];
     next[idx] = entry.copyWith(notes: notes);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
+  /// Add a highlight, or replace an existing highlight on the same range.
+  Future<void> upsertHighlight(String id, TextHighlight highlight) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final entry = list[idx];
+    final highlights =
+        entry.highlights
+            .where(
+              (h) => !(h.start == highlight.start && h.end == highlight.end),
+            )
+            .toList()
+          ..add(highlight)
+          ..sort((a, b) => a.start.compareTo(b.start));
+    final next = [...list];
+    next[idx] = entry.copyWith(highlights: highlights);
+    await _writeIndex(next);
+    state = AsyncData(next);
+  }
+
+  Future<void> removeHighlight(String id, TextHighlight highlight) async {
+    final list = state.valueOrNull;
+    if (list == null) return;
+    final idx = list.indexWhere((e) => e.id == id);
+    if (idx < 0) return;
+    final entry = list[idx];
+    final highlights = entry.highlights
+        .where((h) => !(h.start == highlight.start && h.end == highlight.end))
+        .toList();
+    final next = [...list];
+    next[idx] = entry.copyWith(highlights: highlights);
     await _writeIndex(next);
     state = AsyncData(next);
   }

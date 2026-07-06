@@ -73,6 +73,33 @@ class Note {
   );
 }
 
+/// A manually-saved highlight anchored to a character range [start, end).
+class TextHighlight {
+  const TextHighlight({
+    required this.start,
+    required this.end,
+    required this.createdAt,
+  });
+
+  final int start;
+  final int end;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+    'start': start,
+    'end': end,
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory TextHighlight.fromJson(Map<String, dynamic> j) => TextHighlight(
+    start: (j['start'] as num?)?.toInt() ?? 0,
+    end: (j['end'] as num?)?.toInt() ?? 0,
+    createdAt:
+        DateTime.tryParse(j['createdAt'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+  );
+}
+
 /// Metadata for a document saved in the on-device library. The extracted
 /// **typed blocks** are cached as JSON at [cacheBlocksPath]; for PDFs the
 /// original file is copied to [pdfPath] for the "original pages" view.
@@ -92,6 +119,7 @@ class LibraryEntry {
     this.ttsCharOffset = 0,
     this.bookmarks = const [],
     this.notes = const [],
+    this.highlights = const [],
     this.pdfOutline = const [],
     this.contentHash = '',
     this.processingVersion = 0,
@@ -124,6 +152,9 @@ class LibraryEntry {
   /// User notes anchored to character ranges.
   final List<Note> notes;
 
+  /// Manually-saved highlights anchored to character ranges.
+  final List<TextHighlight> highlights;
+
   /// Native PDF outline/bookmark entries mapped to reader character offsets.
   ///
   /// Empty for non-PDF documents and for PDFs without an embedded outline. The
@@ -146,6 +177,7 @@ class LibraryEntry {
     int? ttsCharOffset,
     List<Bookmark>? bookmarks,
     List<Note>? notes,
+    List<TextHighlight>? highlights,
     List<OutlineItem>? pdfOutline,
     String? contentHash,
     int? processingVersion,
@@ -164,6 +196,7 @@ class LibraryEntry {
     ttsCharOffset: ttsCharOffset ?? this.ttsCharOffset,
     bookmarks: bookmarks ?? this.bookmarks,
     notes: notes ?? this.notes,
+    highlights: highlights ?? this.highlights,
     pdfOutline: pdfOutline ?? this.pdfOutline,
     contentHash: contentHash ?? this.contentHash,
     processingVersion: processingVersion ?? this.processingVersion,
@@ -184,6 +217,7 @@ class LibraryEntry {
     'ttsCharOffset': ttsCharOffset,
     'bookmarks': bookmarks.map((b) => b.toJson()).toList(),
     'notes': notes.map((n) => n.toJson()).toList(),
+    'highlights': highlights.map((h) => h.toJson()).toList(),
     'pdfOutline': pdfOutline.map((o) => o.toJson()).toList(),
     'contentHash': contentHash,
     'processingVersion': processingVersion,
@@ -209,6 +243,7 @@ class LibraryEntry {
     ttsCharOffset: (j['ttsCharOffset'] as num?)?.toInt() ?? 0,
     bookmarks: _decodeSafe(j['bookmarks'], Bookmark.fromJson),
     notes: _decodeSafe(j['notes'], Note.fromJson),
+    highlights: _decodeSafe(j['highlights'], TextHighlight.fromJson),
     pdfOutline: _decodeSafe(j['pdfOutline'], OutlineItem.fromJson),
     contentHash: j['contentHash'] as String? ?? '',
     processingVersion: (j['processingVersion'] as num?)?.toInt() ?? 0,
@@ -216,8 +251,8 @@ class LibraryEntry {
 
   /// Decodes a list of nested metadata items tolerantly: items that are not
   /// Maps or that [fromJson] rejects are skipped rather than aborting the
-  /// containing entry. A single malformed bookmark or note must never cause the
-  /// whole document record to disappear from the library.
+  /// containing entry. A single malformed bookmark, note, highlight, or outline
+  /// item must never cause the whole document record to disappear.
   static List<T> _decodeSafe<T>(
     dynamic raw,
     T Function(Map<String, dynamic>) fromJson,

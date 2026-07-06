@@ -37,8 +37,11 @@ void main() {
   test('chunk highlight tints the words in range', () {
     const band = Color(0x33112233);
     final span = buildParagraphSpan(
-      words, base,
-      highlightStart: 0, highlightEnd: 12, highlightColor: band,
+      words,
+      base,
+      highlightStart: 0,
+      highlightEnd: 12,
+      highlightColor: band,
     );
     final tinted = leaves(span).where((s) => s.style?.backgroundColor == band);
     expect(tinted, isNotEmpty);
@@ -49,15 +52,33 @@ void main() {
     const wordHi = Color(0xFFAA0000);
     // Highlight the middle word "lazy" (offsets 4..8).
     final span = buildParagraphSpan(
-      words, base,
-      highlightStart: 0, highlightEnd: 12, highlightColor: band,
-      wordStart: 4, wordEnd: 8, wordColor: wordHi,
+      words,
+      base,
+      highlightStart: 0,
+      highlightEnd: 12,
+      highlightColor: band,
+      wordStart: 4,
+      wordEnd: 8,
+      wordColor: wordHi,
     );
-    final wordLeaf =
-        leaves(span).firstWhere((s) => s.text == 'lazy');
+    final wordLeaf = leaves(span).firstWhere((s) => s.text == 'lazy');
     expect(wordLeaf.style?.backgroundColor, wordHi);
     // "the" stays on the chunk band, not the word colour.
     final theLeaf = leaves(span).firstWhere((s) => s.text == 'the');
     expect(theLeaf.style?.backgroundColor, band);
+  });
+
+  test('manual highlights tint persisted ranges', () {
+    const manual = Color(0x66FDD663);
+    final span = buildParagraphSpan(
+      words,
+      base,
+      manualHighlightRanges: const [(4, 8)],
+      manualHighlightColor: manual,
+    );
+    final lazy = leaves(span).firstWhere((s) => s.text == 'lazy');
+    final the = leaves(span).firstWhere((s) => s.text == 'the');
+    expect(lazy.style?.backgroundColor, manual);
+    expect(the.style?.backgroundColor, isNull);
   });
 }

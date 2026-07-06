@@ -62,6 +62,13 @@ void main() {
         ttsCharOffset: 1234,
         contentHash: 'abc123',
         processingVersion: 3,
+        highlights: [
+          TextHighlight(
+            start: 90,
+            end: 120,
+            createdAt: DateTime.parse('2026-03-02T09:00:00.000'),
+          ),
+        ],
         notes: [
           Note(
             start: 50,
@@ -81,6 +88,9 @@ void main() {
       expect(back.notes.first.start, 50);
       expect(back.notes.first.end, 80);
       expect(back.notes.first.text, 'Interesting');
+      expect(back.highlights, hasLength(1));
+      expect(back.highlights.first.start, 90);
+      expect(back.highlights.first.end, 120);
     },
   );
 
@@ -139,6 +149,30 @@ void main() {
     expect(entries, hasLength(1));
     expect(entries.first.notes, hasLength(1));
     expect(entries.first.notes.first.text, 'Keep');
+  });
+
+  test('malformed highlight items are skipped; valid ones are preserved', () {
+    final json = jsonEncode([
+      {
+        'id': '5',
+        'title': 'Doc',
+        'source': 'txt',
+        'cacheBlocksPath': '/p',
+        'wordCount': 1,
+        'pageCount': 0,
+        'importedAt': '2026-01-01T00:00:00.000',
+        'highlights': [
+          null,
+          {'start': 12, 'end': 34, 'createdAt': '2026-01-03T00:00:00.000'},
+          'oops',
+        ],
+      },
+    ]);
+    final entries = LibraryEntry.decodeList(json);
+    expect(entries, hasLength(1));
+    expect(entries.first.highlights, hasLength(1));
+    expect(entries.first.highlights.first.start, 12);
+    expect(entries.first.highlights.first.end, 34);
   });
 
   test('malformed PDF outline items are skipped; valid ones are preserved', () {

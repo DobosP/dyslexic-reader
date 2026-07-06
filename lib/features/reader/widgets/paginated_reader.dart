@@ -128,9 +128,11 @@ class PaginatedReader extends StatefulWidget {
     this.onReadingChunk,
     this.highlightMaxRows = 2,
     this.noteRanges = const [],
+    this.manualHighlightRanges = const [],
     this.onTextTap,
     this.onNoteTap,
     this.noteColor,
+    this.manualHighlightColor,
     this.continuous = false,
   });
 
@@ -154,14 +156,17 @@ class PaginatedReader extends StatefulWidget {
   /// Character ranges the user has annotated (dotted-underlined in the text).
   final List<(int, int)> noteRanges;
 
-  /// Called when the user long-presses text, with the sentence range hit
-  /// (creates a note on that sentence).
+  /// Character ranges the user has manually highlighted.
+  final List<(int, int)> manualHighlightRanges;
+
+  /// Called when the user long-presses text, with the sentence range hit.
   final void Function(int start, int end)? onTextTap;
 
   /// Called when the user taps a margin note marker, with the existing note's
   /// range, so the reader can open it for viewing/editing.
   final void Function(int start, int end)? onNoteTap;
   final Color? noteColor;
+  final Color? manualHighlightColor;
 
   /// Continuous scroll (one paragraph per item) instead of fixed pages.
   final bool continuous;
@@ -689,7 +694,9 @@ class _PaginatedReaderState extends State<PaginatedReader> {
               verticalPadding: _itemVPad,
               highlight: widget.highlight,
               noteRanges: widget.noteRanges,
+              manualHighlightRanges: widget.manualHighlightRanges,
               noteColor: widget.noteColor,
+              manualHighlightColor: widget.manualHighlightColor,
               onTextTap: widget.onTextTap,
               onNoteTap: widget.onNoteTap,
               textScaler: scaler,
@@ -724,7 +731,9 @@ class _PageBody extends StatelessWidget {
     required this.verticalPadding,
     required this.highlight,
     required this.noteRanges,
+    required this.manualHighlightRanges,
     required this.noteColor,
+    required this.manualHighlightColor,
     required this.onTextTap,
     required this.onNoteTap,
     required this.textScaler,
@@ -739,7 +748,9 @@ class _PageBody extends StatelessWidget {
   final double verticalPadding;
   final ValueListenable<ReadingHighlight>? highlight;
   final List<(int, int)> noteRanges;
+  final List<(int, int)> manualHighlightRanges;
   final Color? noteColor;
+  final Color? manualHighlightColor;
   final void Function(int start, int end)? onTextTap;
   final void Function(int start, int end)? onNoteTap;
   final TextScaler textScaler;
@@ -899,6 +910,12 @@ class _PageBody extends StatelessWidget {
             for (final r in noteRanges)
               if (p.start < r.$2 && p.end > r.$1) r,
           ];
+    final manualRanges = manualHighlightRanges.isEmpty
+        ? const <(int, int)>[]
+        : [
+            for (final r in manualHighlightRanges)
+              if (p.start < r.$2 && p.end > r.$1) r,
+          ];
     return Text.rich(
       buildParagraphSpan(
         p.words,
@@ -910,6 +927,8 @@ class _PageBody extends StatelessWidget {
         wordStart: h.wordStart,
         wordEnd: h.wordEnd,
         wordColor: h.wordColor,
+        manualHighlightRanges: manualRanges,
+        manualHighlightColor: manualHighlightColor,
         noteRanges: ranges,
         noteColor: noteColor,
       ),

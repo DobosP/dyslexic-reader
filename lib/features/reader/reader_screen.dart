@@ -375,6 +375,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     });
     final entry = _liveEntry(ref.watch(libraryControllerProvider).valueOrNull);
     final notes = entry?.notes ?? const <Note>[];
+    final highlights = entry?.highlights ?? const <TextHighlight>[];
     final canViewOriginal = entry?.pdfPath != null && entry!.pageCount > 0;
     final doc = _resolveDoc(prefs.sentencePacing);
 
@@ -434,9 +435,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     onReadingChunk: _onReadingChunk,
                     highlightMaxRows: prefs.highlightMaxRows,
                     noteRanges: [for (final n in notes) (n.start, n.end)],
+                    manualHighlightRanges: [
+                      for (final h in highlights) (h.start, h.end),
+                    ],
                     noteColor: palette.accent,
-                    onTextTap: entry == null ? null : _onTextTap,
-                    onNoteTap: entry == null ? null : _onTextTap,
+                    manualHighlightColor: _manualHighlightColor(palette),
+                    onTextTap: entry == null ? null : _onTextRangeAction,
+                    onNoteTap: entry == null ? null : _openNoteForRange,
                     continuous: prefs.readerContinuous,
                   ),
                   if (prefs.rulerStyle.isBand)
@@ -577,7 +582,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         ),
         if (entry != null)
           IconButton(
-            tooltip: 'Notes & bookmarks',
+            tooltip: 'Notes, bookmarks & highlights',
             icon: const Icon(Icons.edit_note),
             onPressed: () => _annotationsSheet(entry),
           ),
@@ -754,6 +759,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     return s.isEmpty ? 'Bookmark' : s;
   }
 
+  Color _manualHighlightColor(ReadingPalette palette) {
+    // TODO(recovered): Restore selectable highlight colours if the lost design
+    // had a palette. For now, persist ranges only and render with one reader tint.
+    return Color.alphaBlend(const Color(0x66FDD663), palette.background);
+  }
+
   void _addBookmark(LibraryEntry entry) {
     final offset = _pageCtrl.currentOffset;
     ref
@@ -824,9 +835,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
-  // --- Notes (long-press a sentence to annotate it) ---
+  // --- Notes and manual highlights ---
 
-  void _onTextTap(int start, int end) {
+  void _openNoteForRange(int start, int end) {
     final entry = widget.entry;
     if (entry == null) return;
     final live =
@@ -852,6 +863,60 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
+  void _onTextRangeAction(int start, int end) {
+    final entry = widget.entry;
+    if (entry == null) return;
+    final live =
+        _liveEntry(ref.read(libraryControllerProvider).valueOrNull) ?? entry;
+    TextHighlight? existing;
+    for (final h in live.highlights) {
+      if (h.start == start && h.end == end) {
+        existing = h;
+        break;
+      }
+    }
+    final highlightToRemove = existing;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => _SheetBody(
+        title: 'Text actions',
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.note_add_outlined),
+            title: const Text('Add note'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _openNoteForRange(start, end);
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              existing == null
+                  ? Icons.format_color_fill_outlined
+                  : Icons.format_color_reset_outlined,
+            ),
+            title: Text(
+              existing == null ? 'Highlight text' : 'Remove highlight',
+            ),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              if (highlightToRemove == null) {
+                _saveHighlightRange(entry, start, end);
+              } else {
+                ref
+                    .read(libraryControllerProvider.notifier)
+                    .removeHighlight(entry.id, highlightToRemove);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Add a note at the current reading position — a screen-reader-friendly
   /// alternative to long-pressing a sentence (which TalkBack users can't do).
   void _addNoteHere() {
@@ -863,7 +928,33 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       );
       return;
     }
-    _onTextTap(chunk.$1, chunk.$2);
+    _openNoteForRange(chunk.$1, chunk.$2);
+  }
+
+  void _addHighlightHere(LibraryEntry entry) {
+    final chunk = _pageCtrl.chunkAt(_pageCtrl.currentOffset);
+    if (chunk == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nothing to highlight here yet')),
+      );
+      return;
+    }
+    _saveHighlightRange(entry, chunk.$1, chunk.$2);
+  }
+
+  void _saveHighlightRange(LibraryEntry entry, int start, int end) {
+    ref
+        .read(libraryControllerProvider.notifier)
+        .upsertHighlight(
+          entry.id,
+          TextHighlight(start: start, end: end, createdAt: DateTime.now()),
+        );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Highlight saved'),
+        duration: Duration(seconds: 1),
+      ),
+    );
   }
 
   Future<void> _showNotes(String id) async {
@@ -874,6 +965,54 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
     if (!mounted || offset == null) return;
     _pageCtrl.jumpToOffset(offset);
+  }
+
+  void _showHighlights(String id) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => Consumer(
+        builder: (context, ref, _) {
+          final list =
+              ref.watch(libraryControllerProvider).valueOrNull ?? const [];
+          LibraryEntry? entry;
+          for (final e in list) {
+            if (e.id == id) entry = e;
+          }
+          final highlights = entry?.highlights ?? const <TextHighlight>[];
+          if (highlights.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No highlights yet. Long-press text to save one.'),
+            );
+          }
+          return ListView(
+            shrinkWrap: true,
+            children: [
+              for (final h in highlights)
+                ListTile(
+                  leading: const Icon(Icons.format_color_fill_outlined),
+                  title: Text(
+                    _snippet(h.start),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => ref
+                        .read(libraryControllerProvider.notifier)
+                        .removeHighlight(id, h),
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _pageCtrl.jumpToOffset(h.start);
+                  },
+                ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   // --- Grouped quick-sheets (text · reading focus · annotations) ---
@@ -1038,6 +1177,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               _addBookmark(entry);
             },
           ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.format_color_fill_outlined),
+            title: const Text('Highlight current line'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _addHighlightHere(entry);
+            },
+          ),
           const Divider(),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1055,6 +1203,15 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             onTap: () {
               Navigator.of(sheetContext).pop();
               _showBookmarks(entry.id);
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.format_color_fill_outlined),
+            title: const Text('View highlights'),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              _showHighlights(entry.id);
             },
           ),
         ],
