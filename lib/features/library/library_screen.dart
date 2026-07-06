@@ -4,12 +4,13 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/responsive/breakpoints.dart';
 import '../../core/platform/incoming_file_channel.dart';
 import '../../domain/models/library_entry.dart';
+import '../../domain/models/reading_document.dart';
 import '../../domain/reflow/tokenizer.dart';
 import '../reader/original_pdf_screen.dart';
 import '../reader/reader_screen.dart';
-import '../settings/settings_screen.dart';
 import 'library_controller.dart';
 import 'paste_text_screen.dart';
 import 'sample_text.dart';
@@ -91,6 +92,11 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen>
     with WidgetsBindingObserver {
   bool _checkingIncoming = false;
+
+  // On a wide (tablet/desktop) layout the chosen entry opens in the right-hand
+  // reading pane instead of a pushed full-screen route. Null on phones.
+  LibraryEntry? _selected;
+  Future<ReadingDocument>? _selectedDoc;
 
   @override
   void initState() {
@@ -186,7 +192,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       if (!entry.hasTextLayer) {
         _snack("Couldn't recognize text — showing the original pages.");
       }
-      await openLibraryEntry(context, ref, entry);
+      await _openEntry(entry);
     }
   }
 
@@ -204,23 +210,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final library = ref.watch(libraryControllerProvider);
+    final wide = WindowSize.of(context).isExpanded;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dyslexic Reader'),
-        actions: [
-          IconButton(
-            tooltip: 'Reading settings',
-            icon: const Icon(Icons.tune),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-            ),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
+    final listView = ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
           Text('Read more comfortably', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
@@ -253,7 +247,53 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
               padding: EdgeInsets.all(24),
               child: Center(child: CircularProgressIndicator()),
             ),
-            error: (_, _) => const SizedBox.shrink(),
+            error: (_, _) => Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Card(
+                color: theme.colorScheme.errorContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.error_outline,
+                              color: theme.colorScheme.onErrorContainer),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "Couldn't load your library",
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: theme.colorScheme.onErrorContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Your documents are still saved — this was only a '
+                        'display error. Try loading them again.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              ref.invalidate(libraryControllerProvider),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             data: (entries) {
               if (entries.isEmpty) return const SizedBox.shrink();
               return Column(
@@ -262,13 +302,85 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                   const SizedBox(height: 16),
                   Text('Your documents', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  for (final e in entries) _DocTile(entry: e),
+                  for (final e in entries)
+                    _DocTile(
+                      entry: e,
+                      selected: e.id == _selected?.id,
+                      onOpen: () => _openEntry(e),
+                    ),
                 ],
               );
             },
           ),
-        ],
-      ),
+      ],
+    );
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Dyslexic Reader')),
+      body: wide
+          ? Row(
+              children: [
+                SizedBox(width: 380, child: listView),
+                const VerticalDivider(width: 1, thickness: 1),
+                Expanded(child: _detailPane()),
+              ],
+            )
+          : ResponsiveCenter(child: listView),
+    );
+  }
+
+  /// Open [entry]: on a wide layout select it into the reading pane; otherwise
+  /// push the reader (or the original-pages view for scanned PDFs) full-screen.
+  Future<void> _openEntry(LibraryEntry entry) async {
+    if (WindowSize.of(context).isExpanded && entry.hasTextLayer) {
+      setState(() {
+        _selected = entry;
+        _selectedDoc =
+            ref.read(libraryControllerProvider.notifier).open(entry);
+      });
+      return;
+    }
+    await openLibraryEntry(context, ref, entry);
+  }
+
+  /// The right-hand reading pane shown on wide layouts.
+  Widget _detailPane() {
+    final selected = _selected;
+    if (selected == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.menu_book_outlined,
+                  size: 48, color: Theme.of(context).disabledColor),
+              const SizedBox(height: 12),
+              Text(
+                'Select a document to start reading',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return FutureBuilder<ReadingDocument>(
+      future: _selectedDoc,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Center(child: Text('Could not open “${selected.title}”.'));
+        }
+        return ReaderScreen(
+          key: ValueKey(selected.id),
+          document: snapshot.data!,
+          entry: selected,
+        );
+      },
     );
   }
 }
@@ -336,9 +448,15 @@ class _ActionCard extends StatelessWidget {
 }
 
 class _DocTile extends ConsumerWidget {
-  const _DocTile({required this.entry});
+  const _DocTile({
+    required this.entry,
+    required this.onOpen,
+    this.selected = false,
+  });
 
   final LibraryEntry entry;
+  final VoidCallback onOpen;
+  final bool selected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -355,7 +473,9 @@ class _DocTile extends ConsumerWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
+      color: selected ? Theme.of(context).colorScheme.secondaryContainer : null,
       child: ListTile(
+        selected: selected,
         leading: Icon(icon),
         title: Text(entry.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(detail),
@@ -388,7 +508,7 @@ class _DocTile extends ConsumerWidget {
             ),
           ],
         ),
-        onTap: () => openLibraryEntry(context, ref, entry),
+        onTap: onOpen,
       ),
     );
   }

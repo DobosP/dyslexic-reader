@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/models/reading_prefs.dart';
+import 'app_tokens.dart';
 
 /// Background/foreground colours for a reading theme.
 class ReadingPalette {
@@ -78,5 +79,6 @@ ThemeData buildAppTheme(ReadingThemeId id) {
       foregroundColor: p.onBackground,
       elevation: 0,
     ),
+    extensions: const [AppTokens.standard],
   );
 }
