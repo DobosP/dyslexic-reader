@@ -1,6 +1,6 @@
 # Status — dyslexic-reader
 
-Last verified: 2026-07-06
+Last verified: 2026-07-07 (`flutter analyze` clean + full `flutter test` 84 green on the Linux Flutter host)
 
 Single source of current truth for this repo. On any doc conflict:
 this file > newest-dated ADR in `docs/adr/` > everything else.
@@ -21,14 +21,11 @@ this file > newest-dated ADR in `docs/adr/` > everything else.
 - Decisions: [`docs/adr/`](docs/adr/) (ADR-0001: PDF parsing = PdfBox-Android
   subclassed stripper).
 
-## In-flight (unmerged, UNVERIFIED — needs `flutter analyze`/`test` on a Flutter host)
+## Adaptive/responsive UI (MERGED to main; gate green 2026-07-07)
 
-Branch **`feat/adaptive-responsive-ui`** — responsive/adaptive cross-device UI.
-Authored on a Windows box **without the Flutter SDK**, so static-reviewed only
-(Codex: ANALYZE-CLEAN) — NOT compiled or tested. Do not merge until
-`flutter analyze && flutter test` are green on a Flutter host. (CI `build.yml`
-also builds pushes to `claude/**` branches, if you want an APK artifact without
-merging to main.)
+Landed during the 2026-07-06 branch consolidation and verified on the Linux
+Flutter host on 2026-07-07: `flutter analyze` clean, full `flutter test` green
+(84). Decision record: ADR-0002 (adaptive navigation + tablet master-detail).
 
 - **Stage 1** — foundations + adaptive nav. `lib/app/responsive/breakpoints.dart`
   (WindowSize + ResponsiveCenter), `lib/app/theme/app_tokens.dart` (AppTokens

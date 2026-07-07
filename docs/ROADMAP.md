@@ -44,8 +44,12 @@ Redefined with the product owner. Built in this order:
       docs/PDF_PARSING.md
 - [x] **Outline / structure**: extract the PDF table of contents (PdfBox) + an
       overview; tap a chapter to jump to it
-- [ ] **Manual highlighting**: finger-select text, colored highlights saved per
-      book, revisitable list  *(post-1.0 backlog)*
+- [x] **Manual highlighting (v1 scope shipped 2026-07-07)**: persisted highlight
+      ranges added from long-press / current reading position, listed +
+      deletable, rendered inline (recovered re-implementation; see STATUS.md).
+- [ ] **Manual highlighting v2**: finger-select arbitrary text + colored
+      highlights (single color today — `TODO(recovered)` in
+      `lib/features/reader/reader_screen.dart`)  *(post-1.0 backlog)*
 - [ ] **AI summary**: whole-book / per-chapter summaries  *(parked — revisit cloud powering + API key)*
 - [x] **Read-aloud (text-to-speech)**: chunk-level highlight synced to playback,
       ±15s skip, resume where paused, in-reader speed control (`flutter_tts`)
