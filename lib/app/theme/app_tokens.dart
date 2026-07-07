@@ -14,7 +14,6 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.radiusSm,
     required this.radiusMd,
     required this.radiusLg,
-    required this.readerSideGutter,
   });
 
   final double spaceXs;
@@ -27,11 +26,6 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final double radiusMd;
   final double radiusLg;
 
-  /// Extra horizontal breathing room applied to the reading column on wide
-  /// screens so lines don't run uncomfortably long on tablets. Consumed by the
-  /// reader in a later increment.
-  final double readerSideGutter;
-
   /// The single app-wide token set. Kept simple and static; theming stays
   /// driven by the reading palette, these are structural metrics only.
   static const AppTokens standard = AppTokens(
@@ -43,7 +37,6 @@ class AppTokens extends ThemeExtension<AppTokens> {
     radiusSm: 8,
     radiusMd: 12,
     radiusLg: 20,
-    readerSideGutter: 48,
   );
 
   /// The app tokens registered on the current theme, or [standard] as a
@@ -61,7 +54,6 @@ class AppTokens extends ThemeExtension<AppTokens> {
     double? radiusSm,
     double? radiusMd,
     double? radiusLg,
-    double? readerSideGutter,
   }) {
     return AppTokens(
       spaceXs: spaceXs ?? this.spaceXs,
@@ -72,7 +64,6 @@ class AppTokens extends ThemeExtension<AppTokens> {
       radiusSm: radiusSm ?? this.radiusSm,
       radiusMd: radiusMd ?? this.radiusMd,
       radiusLg: radiusLg ?? this.radiusLg,
-      readerSideGutter: readerSideGutter ?? this.readerSideGutter,
     );
   }
 
@@ -88,7 +79,6 @@ class AppTokens extends ThemeExtension<AppTokens> {
       radiusSm: _lerp(radiusSm, other.radiusSm, t),
       radiusMd: _lerp(radiusMd, other.radiusMd, t),
       radiusLg: _lerp(radiusLg, other.radiusLg, t),
-      readerSideGutter: _lerp(readerSideGutter, other.readerSideGutter, t),
     );
   }
 }

@@ -32,6 +32,8 @@ class ReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _ReaderScreenState extends ConsumerState<ReaderScreen> {
+  static const Color _manualHighlightTint = Color(0x66FDD663);
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final PageReaderController _pageCtrl = PageReaderController();
 
@@ -760,9 +762,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 
   Color _manualHighlightColor(ReadingPalette palette) {
-    // TODO(recovered): Restore selectable highlight colours if the lost design
-    // had a palette. For now, persist ranges only and render with one reader tint.
-    return Color.alphaBlend(const Color(0x66FDD663), palette.background);
+    // Manual highlighting v1 intentionally uses one persisted tint. ROADMAP.md
+    // tracks the post-1.0 colored-highlight picker as manual highlighting v2.
+    return Color.alphaBlend(_manualHighlightTint, palette.background);
   }
 
   void _addBookmark(LibraryEntry entry) {

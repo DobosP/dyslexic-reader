@@ -1,7 +1,6 @@
 # ADR-0002 — Adaptive navigation shell + tablet master-detail library
 
-- **Status:** accepted (2026-07-07; retroactive — the code merged to main on
-  2026-07-06 during the fleet branch consolidation, gate verified 2026-07-07)
+- **Status:** superseded-by ADR-0003 (2026-07-07)
 - **Context:** the app was phone-only: `app.dart` pushed full-screen routes and
   the library and reader never used tablet width. The adaptive-UI work
   (`feat/adaptive-responsive-ui`, static-reviewed on a Windows box, later

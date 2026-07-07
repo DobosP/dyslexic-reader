@@ -307,6 +307,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                       entry: e,
                       selected: e.id == _selected?.id,
                       onOpen: () => _openEntry(e),
+                      onRemove: () => _removeEntry(e),
                     ),
                 ],
               );
@@ -341,6 +342,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       return;
     }
     await openLibraryEntry(context, ref, entry);
+  }
+
+  void _removeEntry(LibraryEntry entry) {
+    if (_selected?.id == entry.id) {
+      setState(() {
+        _selected = null;
+        _selectedDoc = null;
+      });
+    }
+    unawaited(ref.read(libraryControllerProvider.notifier).delete(entry));
   }
 
   /// The right-hand reading pane shown on wide layouts.
@@ -451,11 +462,13 @@ class _DocTile extends ConsumerWidget {
   const _DocTile({
     required this.entry,
     required this.onOpen,
+    required this.onRemove,
     this.selected = false,
   });
 
   final LibraryEntry entry;
   final VoidCallback onOpen;
+  final VoidCallback onRemove;
   final bool selected;
 
   @override
@@ -485,7 +498,7 @@ class _DocTile extends ConsumerWidget {
             if (value == 'reprocess') {
               runReprocess(context, ref, entry);
             } else if (value == 'remove') {
-              ref.read(libraryControllerProvider.notifier).delete(entry);
+              onRemove();
             }
           },
           itemBuilder: (context) => [
