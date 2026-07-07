@@ -17,7 +17,8 @@
 ## Safety
 - Never read or print secret values from signing configs, env files, keystores, or service files.
 - Do not weaken persistence/recovery guarantees for library data.
-- Do not push or merge unless Paul explicitly asks.
+- Direct merge + push to `main` is allowed once the test gate is green (owner
+  decision 2026-07-07, development phase). Never land a red suite.
 
 ## Commands
 - Library index test: `export PATH="$HOME/flutter/bin:$PATH"; flutter test test/library_index_store_test.dart`
