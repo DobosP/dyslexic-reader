@@ -7,6 +7,7 @@
 - Role: standalone Flutter dyslexia-friendly reader (Android-first); no fleet data dependencies.
 - Upstream: none · Downstream: none.
 - Fleet map + parallel-agent protocol: `~/work/AGENTS.md` (agent-ops ADR-0025).
+- Secrets: registry `agent-ops/secrets/secrets.manifest.yaml` (release signing lives in GitHub Actions secrets, ADR-0027); never commit values.
 
 ## Parallel work (mandatory)
 - This shared checkout stays on `main`, clean — never switch branches or commit task work here.
