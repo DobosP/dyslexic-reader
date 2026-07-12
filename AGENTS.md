@@ -3,6 +3,18 @@
 ## Project summary
 `dyslexic-reader` is a Flutter app. Library/index persistence must be atomic and recoverable so user libraries are not silently lost.
 
+## Fleet context
+- Role: standalone Flutter dyslexia-friendly reader (Android-first); no fleet data dependencies.
+- Upstream: none · Downstream: none.
+- Fleet map + parallel-agent protocol: `~/work/AGENTS.md` (agent-ops ADR-0025).
+
+## Parallel work (mandatory)
+- This shared checkout stays on `main`, clean — never switch branches or commit task work here.
+- One task = one branch (`<type>/<slug>`) = one worktree under `~/work/_worktrees/dyslexic-reader/`:
+  `python3 ~/work/agent-ops/scripts/create_task_worktree.py --repo ~/work/dyslexic-reader --branch <type>/<slug> --task "..." --write`
+- Never create worktrees under `/tmp`. Workers never push; the orchestrating session lands green
+  work on `main` (ADR-0014) and backs up unlanded branches to origin. Deletion is human-confirmed only.
+
 ## Read first
 1. `STATUS.md` for durable status.
 2. `README.md` if present.
