@@ -4,10 +4,8 @@
 `dyslexic-reader` is a Flutter app. Library/index persistence must be atomic and recoverable so user libraries are not silently lost.
 
 ## Fleet context
-- Role: standalone Flutter dyslexia-friendly reader (Android-first); no fleet data dependencies.
-- Upstream: none · Downstream: none.
+- Canonical role/status/next for this repo: the vault note `dobo-brain/paul-brain/projects/dyslexic-reader.md` (fleet view: the vault's `projects/index.md` + `NOW.md`; agent-ops ADR-0032, vault adr-0001).
 - Fleet map + parallel-agent protocol: `~/work/AGENTS.md` (agent-ops ADR-0025).
-- Secrets: registry `agent-ops/secrets/secrets.manifest.yaml` (release signing lives in GitHub Actions secrets, ADR-0027); never commit values.
 
 ## Parallel work (mandatory)
 - This shared checkout stays on `main`, clean — never switch branches or commit task work here.
