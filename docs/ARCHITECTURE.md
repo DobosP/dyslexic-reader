@@ -1,6 +1,6 @@
 # Architecture — dyslexic‑reader
 
-Android‑first **Flutter** app that opens PDFs and plain text and re‑renders them in a
+Android‑first **Flutter** app that opens PDF, Word (.docx) and plain-text files and re‑renders them in a
 dyslexia‑friendly reading surface (adjustable spacing/typography, themes, reading ruler,
 and text‑to‑speech with synchronized word highlighting), in **multiple languages**.
 
@@ -17,10 +17,10 @@ the choices is in [RESEARCH.md](./RESEARCH.md).
    offline, private. Cloud is an **optional** upgrade (hybrid), never the default path.
 3. **Reflow, don't just overlay.** Extract text and re‑render in our own typographic
    surface; OCR scanned PDFs; keep an "original view" only as a fallback.
-4. **Flutter for everything except the two hard native bits.** Word‑boundary TTS and
-   PDF text extraction go through thin native bridges (see §5); everything else is Dart.
-5. **Multilingual + RTL from day one.** Separate UI language, content language, and TTS
-   voice; auto‑detect content; BiDi‑correct rendering.
+4. **Flutter for everything except the one hard native bit.** PDF text extraction goes
+   through a thin native bridge (§5.1); TTS and OCR are plugins (§5.2); everything else is Dart.
+5. **Multilingual, RTL‑ready.** Separate UI language, content language and TTS voice; content
+   auto‑detect and BiDi reflow are post‑1.0 (§11).
 
 ---
 
@@ -38,38 +38,38 @@ the choices is in [RESEARCH.md](./RESEARCH.md).
 │   • Reflow/tokenize, spacing engine, ruler, bionic(optional)       │
 │                                                                    │
 │  Data / services     ── repositories + adapters                    │
-│   • DocumentRepository  • PrefsRepository  • LibraryDb (drift)      │
-│   • PdfTextService  • OcrService  • LangIdService  • TtsService     │
+│   • PrefsRepository  • LibraryIndexStore (JSON, atomic)            │
+│   • LibraryController  • PdfTextChannel  • OcrEngine  • FlutterTts │
 └─────────────┬───────────────────────────────┬────────────────────┘
-              │ MethodChannel/EventChannel     │ pub.dev plugins
+              │ MethodChannel bridges          │ pub.dev plugins
               ▼                                 ▼
 ┌──────────────────────────────┐   ┌──────────────────────────────┐
 │ Native Android (Kotlin)      │   │ Flutter plugins               │
-│  • PdfTextExtractor          │   │  • google_mlkit_text_recog.   │
-│    (PdfBox‑Android, Apache2) │   │    (OCR, on‑device)           │
-│  • TtsEngine                 │   │  • google_mlkit_language_id   │
-│    (TextToSpeech +           │   │  • pdfrx (PDFium) original    │
-│     onRangeStart word sync)  │   │    page render fallback       │
-└──────────────────────────────┘   │  • file_picker, share, etc.   │
-                                    │  • (later) sherpa_onnx neural │
-                                    │    offline TTS                │
-                                    └──────────────────────────────┘
+│  • MainActivity              │   │  • google_mlkit_text_recog.   │
+│    (pdf_text + incoming      │   │    + mobile_ocr (OCR)         │
+│     channels, PdfRenderer)   │   │  • flutter_tts (word‑range    │
+│  • StructuredTextStripper    │   │    progress → highlight)      │
+│    (PdfBox‑Android, Apache2) │   │  • archive + xml (.docx)      │
+└──────────────────────────────┘   │  • file_selector, share, etc. │
+                                   │  • (later) sherpa_onnx neural │
+                                   │    offline TTS                │
+                                   └──────────────────────────────┘
 ```
 
 ### Document pipeline
 
 ```
-import (file_picker / share intent / paste)
+import (file_selector / share intent / paste)
    │
-   ├─ PDF ──► PdfTextService.extract()  ─► has usable text layer?
-   │            (native PdfBox bridge)        │ yes ─► structured text (pages/blocks/lines/words)
-   │                                          │ no  ─► render page bitmap ─► OcrService (ML Kit)
+   ├─ PDF ──► PdfTextChannel.extractText()  ─► has usable text layer?
+   │            (native PdfBox bridge)            │ yes ─► structured text (pages/blocks/lines/words)
+   │                                              │ no  ─► render page bitmap ─► OcrEngine (Paddle → ML Kit fallback)
    │                                                                            └─ script unsupported? ─► (later) Tesseract / cloud
    │
-   └─ TXT / pasted ──► plain text
+   └─ TXT / pasted / DOCX ──► plain text (DOCX: word/document.xml via archive + xml)
         │
         ▼
-   LangIdService.detect()  ─►  content language (BCP‑47) → pick TTS voice + OCR script
+   (language auto-detect: post-1.0; TTS voice chosen in Settings)
         │
         ▼
    Tokenizer ─► Document model (paragraphs → sentences → words, with char offsets)
@@ -78,7 +78,7 @@ import (file_picker / share intent / paste)
    Reading surface  ── applies ReadingPrefs (spacing, font, theme, ruler, bionic?)
         │                renders reflowed RichText in a virtualized list
         ▼
-   TtsService.speak(document, fromWord)  ── streams onRangeStart → highlight current word/sentence
+   FlutterTts.speak(chunk)  ── setProgressHandler (onRangeStart) → highlight current word inside the ≤2-line chunk
 ```
 
 ---
@@ -90,16 +90,16 @@ import (file_picker / share intent / paste)
 | Framework / UI | **Flutter (stable) + Material 3** | BSD | Chosen by product owner; one codebase, iOS later. |
 | Language | **Dart**; **Kotlin** for native bridges | — | — |
 | State management | **Riverpod 2** (`flutter_riverpod`) | MIT | Compile‑safe, testable, no `BuildContext` coupling. |
-| Routing | **go_router** | BSD | Declarative, deep‑link friendly. |
-| Structured persistence | **drift** (SQLite) | MIT | Library, bookmarks, reading progress. Typed, migratable. |
+| Routing | **Navigator** + `IndexedStack` shell (`lib/app/app_shell.dart`) | — | No router package; phone pushes full‑screen routes, wide layouts embed the reader (ADR-0003). |
+| Library index | **JSON file** written atomically (temp → primary, `.bak` backup, `.corrupt` quarantine) | — | `lib/core/storage/atomic_file_writer.dart`, `lib/features/library/library_index_store.dart`. Entries carry progress, bookmarks, notes, highlight ranges. |
 | Simple settings | **shared_preferences** | BSD | ReadingPrefs key‑values. |
 | PDF **text** extraction | **Native bridge → PdfBox‑Android** | Apache‑2.0 | Only reliable text+positions on Android; commercial‑safe. |
 | PDF **page render** (original view) | **Android `PdfRenderer`** (built-in) via native bridge | AOSP | No extra dep; renders scanned/layout-heavy pages and is the OCR raster source. |
-| OCR | **google_mlkit_text_recognition** | Apache‑2.0 | On‑device, 5 scripts; Tesseract later for more. |
-| Language detection | **google_mlkit_language_id** | Apache‑2.0 | On‑device, 100+ languages → voice/script selection. |
-| TTS (word‑sync) | **Native bridge → Android `TextToSpeech`** (`onRangeStart`) | first‑party | Only reliable word‑boundary highlighting. |
+| OCR | **google_mlkit_text_recognition** + `mobile_ocr` (ente-io) — `lib/data/services/ocr_service.dart:1-2` | Apache‑2.0 | On‑device; the app uses the Latin recognizer (`lib/data/services/ocr_service.dart:21`) plus PaddleOCR; more scripts later. |
+| Language detection | not implemented (post‑1.0) | — | See [`ROADMAP.md`](./ROADMAP.md) Phase 4; voice is chosen manually in Settings. |
+| TTS (word‑sync) | **`flutter_tts`** plugin → Android `TextToSpeech` word‑range progress | MIT | `setProgressHandler` drives the word highlight (`lib/features/reader/reader_screen.dart:147`). |
 | TTS (offline neural, later) | **sherpa_onnx** (Piper) | Apache‑2.0 | Privacy/quality upgrade; per‑language model. |
-| Fonts | **OpenDyslexic** (opt‑in), **Lexend**, system sans‑serif | OFL | Spacing matters more than font; offer choice. |
+| Fonts | **OpenDyslexic** (opt‑in), **Atkinson Hyperlegible**, **Lexend**, system sans‑serif | OFL | Spacing matters more than font; offer choice. |
 | File import | **file_selector** (official) + native open‑with/share intents | BSD | Open/paste/share PDFs & text. |
 | Lint | **flutter_lints** / `analysis_options.yaml` | BSD | — |
 
@@ -110,83 +110,49 @@ import (file_picker / share intent / paste)
 
 ## 4. Project structure (feature‑first)
 
-```
-dyslexic-reader/
-├─ lib/
-│  ├─ main.dart                      # bootstrap, ProviderScope, theme, router
-│  ├─ app/
-│  │  ├─ app.dart                    # MaterialApp.router
-│  │  ├─ router.dart                 # go_router routes
-│  │  └─ theme/                      # dyslexia themes (cream/sepia/dark/high-contrast)
-│  ├─ core/
-│  │  ├─ result.dart                 # Result/failure types
-│  │  ├─ platform/                   # MethodChannel/EventChannel wrappers
-│  │  │  ├─ pdf_text_channel.dart
-│  │  │  └─ tts_channel.dart
-│  │  └─ utils/                      # tokenizer, bidi helpers, hyphenation hooks
-│  ├─ domain/
-│  │  ├─ models/                     # Document, Page, Block, Line, Word, ReadingPrefs
-│  │  ├─ reflow/                     # tokenizer, spacing engine, bionic(optional)
-│  │  └─ services/                   # abstract service interfaces
-│  ├─ data/
-│  │  ├─ db/                         # drift database (library, bookmarks, progress)
-│  │  ├─ prefs/                      # shared_preferences-backed PrefsRepository
-│  │  └─ services_impl/              # PdfTextService, OcrService, LangIdService, TtsService
-│  └─ features/
-│     ├─ library/                    # list of imported docs, import button
-│     ├─ reader/                     # the reading surface + ruler + controls
-│     │  ├─ reader_screen.dart
-│     │  ├─ widgets/reflow_text.dart # RichText builder w/ spacing & highlight
-│     │  ├─ widgets/reading_ruler.dart
-│     │  └─ controller/reader_controller.dart  # Riverpod notifier
-│     ├─ tts/                        # playback controls, voice/speed, highlight state
-│     └─ settings/                   # all adjustable prefs (sliders, theme, font)
-├─ android/
-│  └─ app/src/main/kotlin/.../       # PdfTextExtractor.kt, TtsEngine.kt, MainActivity
-├─ assets/fonts/                     # OpenDyslexic, Lexend
-├─ test/                             # unit tests (tokenizer, spacing, bionic, reflow)
-├─ docs/                             # RESEARCH.md, ARCHITECTURE.md, ROADMAP.md
-└─ .github/workflows/                # CI: analyze + test + build signed APK
-```
+Feature‑first layout: `lib/domain/` is pure Dart (tokenizer, paginator, reflow, document structure —
+unit‑tested without Flutter), `lib/core/` holds the atomic file writer and the two platform channels,
+`lib/data/` the prefs repository and OCR service, `lib/features/` the library / reader / settings /
+onboarding screens, and `lib/app/` the adaptive shell and theme tokens. The authoritative directory
+map is [`README.md`](../README.md) §Project layout; native Kotlin lives under
+`android/app/src/main/kotlin/`.
 
 ---
 
-## 5. Native platform channels (the two hard bits)
+## 5. Native platform channels and TTS
 
-Flutter plugins for these are immature/unreliable (see RESEARCH §3), so we own thin Kotlin
-bridges. Interfaces are small and stable.
+PDF text extraction has no reliable Flutter plugin (see RESEARCH §3), so we own a thin Kotlin
+bridge for it; word‑synced TTS ships as a plugin (§5.2). Interfaces are small and stable.
 
 ### 5.1 PDF text extraction — `MethodChannel("dyslexic_reader/pdf_text")`
 
 ```
 extractText({ path: String, password: String? })
-   → { pages: [ { index, width, height,
-                  blocks: [ { lines: [ { text,
-                              words: [ { text, x, y, w, h } ] } ] } ],
-                  hasText: Bool } ] }
+   → { blocks:    [ { type: "h1"|"h2"|"h3"|"p", text: String, page: Int } ],
+       pageCount: Int,
+       hasText:   Bool,
+       outline:   [ { title: String, level: Int, page: Int } ] }
 
-hasTextLayer({ path }) → Bool          // quick check to decide reflow vs OCR
+renderPage({ path: String, pageIndex: Int, targetWidth: Int }) → PNG bytes (Uint8List)
 ```
 Kotlin impl: `PdfBox-Android` `PDFTextStripper`, subclassed to capture per‑`TextPosition`
-coordinates for reading‑order reconstruction and word boxes. Runs off the main thread.
+coordinates for typed blocks (h1–h3 / p) from coordinate + font heuristics. Runs off the main thread.
 
-### 5.2 Text‑to‑speech — `MethodChannel("dyslexic_reader/tts")` + `EventChannel(".../tts_events")`
+### 5.2 Text‑to‑speech — `flutter_tts` plugin
 
-```
-Methods:  init() · getVoices() → [{name, locale, networkRequired, quality}]
-          setVoice(name) · setLocale(bcp47) · setRate(0.5..2.0) · setPitch()
-          speak({ utteranceId, text }) · stop() · pause() · resume()
+Implemented with the `flutter_tts` plugin rather than a hand‑written channel: it wraps
+`android.speech.tts.TextToSpeech` and surfaces `UtteranceProgressListener.onRangeStart` as progress
+callbacks; `ReaderScreen` registers `setProgressHandler` to move the word highlight
+(`lib/features/reader/reader_screen.dart:145-147`). The only hand‑written channels are
+`dyslexic_reader/pdf_text` and `dyslexic_reader/incoming`
+(`android/app/src/main/kotlin/com/dobosp/dyslexic_reader/MainActivity.kt:29-30`).
 
-Events (stream):  { type: "rangeStart", utteranceId, start, end }   // char offsets → highlight
-                  { type: "start"|"done"|"error", utteranceId }
-```
-Kotlin impl: `android.speech.tts.TextToSpeech` + `UtteranceProgressListener.onRangeStart`.
-**Fallback:** if the active engine/voice never emits `onRangeStart` (some OEM/offline
-voices), degrade to **sentence‑level** highlighting using utterance start/done boundaries.
-Long text is chunked (<4000 chars/utterance) at sentence boundaries.
+**Fallback:** text is spoken one chunk (≤ 2 rendered lines) per utterance; engines/voices that
+never emit `onRangeStart` leave the chunk‑band highlight in place and the completion handler
+advances to the next chunk.
 
-> OCR (`google_mlkit_text_recognition`) and language ID (`google_mlkit_language_id`) use
-> existing, maintained Flutter plugins — no custom bridge needed.
+> OCR (`google_mlkit_text_recognition`, `mobile_ocr`) and TTS (`flutter_tts`) use existing,
+> maintained Flutter plugins — no custom bridge needed.
 
 ---
 
@@ -214,10 +180,11 @@ syllableEnabled, highlightWord/Sentence.
 
 ## 7. Multilingual & RTL
 
-- **Three independent languages:** UI locale (`flutter_localizations`), **content** language
-  (auto‑detected via ML Kit, user‑overridable), and **TTS voice** language.
-- Content language drives **TTS voice selection** and **OCR script** choice.
-- **RTL:** wrap reflow surface in `Directionality` derived from detected script; ensure
+- **Three independent languages:** UI locale (`flutter_localizations` — post‑1.0), **content** language
+  (auto‑detection is post‑1.0 — ROADMAP Phase 4; chosen manually in Settings today), and **TTS voice** language.
+- **(post‑1.0)** Content language will drive **TTS voice selection** and **OCR script**
+  choice; today OCR is Latin‑script ML Kit or PaddleOCR (`lib/data/services/ocr_service.dart:21`).
+- **(post‑1.0) RTL:** wrap reflow surface in `Directionality` derived from detected script; ensure
   ruler, highlight, and bionic logic are direction‑aware. OCR for Arabic/Hebrew scanned docs
   likely needs Tesseract/cloud (ML Kit gap) — deferred.
 
@@ -225,18 +192,25 @@ syllableEnabled, highlightWord/Sentence.
 
 ## 8. Persistence & state
 
-- **drift (SQLite):** `documents` (id, title, source path/uri, type, language, pageCount,
-  importedAt), `progress` (docId, lastWordIndex/scroll), `bookmarks`.
+- **Library index (JSON, atomic):** one `index.json` per library with entries (title, source, type, reading
+  progress, bookmarks, notes, highlight ranges — `lib/domain/models/library_entry.dart`); writes go temp → rename,
+  previous good copy kept as `index.json.bak`, unreadable primaries quarantined as `index.json.corrupt`
+  (`lib/features/library/library_index_store.dart:5-23`). Invariant: never silently lose a library
+  (`AGENTS.md` §Safety).
 - **shared_preferences:** `ReadingPrefs` (JSON).
-- **Riverpod** providers expose repositories & controllers; reader state (current word,
-  playback status, ruler position) lives in a `ReaderController` notifier.
-- Imported files copied into app storage (or stored as content‑URIs) so they survive.
+- **Riverpod** providers expose repositories & controllers (`ReadingPrefsController extends
+  Notifier<ReadingPrefs>` — `lib/features/settings/reading_prefs_controller.dart:8`); reader state is
+  local to the screen — highlight in a `ValueNotifier<ReadingHighlight>`
+  (`lib/features/reader/reader_screen.dart:42`), pagination in `PageReaderController extends
+  ChangeNotifier` (`lib/features/reader/widgets/paginated_reader.dart:42`).
+- Imported PDFs are copied into app storage (`library/`) with a cached typed‑blocks file per document,
+  so they survive permission/URI revocation.
 
 ---
 
 ## 9. Privacy & the hybrid (local + optional cloud) model
 
-- **Default = 100% on‑device:** PdfBox parse, ML Kit OCR/Lang‑ID, system TTS. No network,
+- **Default = 100% on‑device:** PdfBox parse, ML Kit / mobile_ocr OCR, system TTS. No network,
   no data leaves the device. This is a stated **differentiator** vs cloud‑bound incumbents.
 - **Optional cloud (opt‑in, later):** premium neural voices (Amazon Polly per‑word speech
   marks / Azure / Google) and cloud OCR for non‑Latin scripts. Gated behind an explicit
@@ -254,26 +228,23 @@ syllableEnabled, highlightWord/Sentence.
 - **Release signing:** the workflow signs with a keystore injected from repo secrets
   (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
   `ANDROID_KEY_PASSWORD`). If those secrets are absent it falls back to a debug‑signed APK
-  so the pipeline is always green. Setup instructions live in the workflow + README.
+  so the pipeline is always green. Setup instructions: [`PUBLISHING.md`](./PUBLISHING.md) Step 2.
 - **minSdk 24** (Android 7.0, ML Kit‑compatible) / **target = Flutter default**.
 
 ---
 
 ## 11. Phased roadmap (maps to RESEARCH build‑order)
 
-**Status (2026-07-02): v1.0 launch candidate.** Phases 0–3 are shipped (incl.
-auto-follow of the read-aloud line, 0020d31, and the accessibility/TalkBack pass,
-a924568). Phase 4's OCR is shipped (4fb9650); **language-ID and RTL are not
-implemented**. Phases 5–6 are post-1.0 backlog. Checkbox-level detail lives in
-[ROADMAP.md](./ROADMAP.md); verified feature status in the README.
+Shipped scope per phase is tracked in [ROADMAP.md](./ROADMAP.md); current state in
+[`STATUS.md`](../STATUS.md). This section describes the phases themselves.
 
 | Phase | Status | Deliverable | Features |
 |---|---|---|---|
 | **0 — Foundation** | ✅ shipped | Building, deployable scaffold | Project skeleton, theme system, settings model, **plain‑text reflow reader with adjustable spacing/typography/themes**, CI → signed APK. |
 | **1 — PDF** | ✅ shipped | Open real PDFs | Native PdfBox bridge, text‑layer detection, reflow of born‑digital PDFs, library/import. |
 | **2 — TTS** *(highest value)* | ✅ shipped | Read aloud + highlight | Word/sentence highlight sync (`flutter_tts` progress handler), speed/voice/pitch controls, chunk‑level fallback. |
-| **3 — Reading ruler** | ✅ shipped | Line focus | Ruler styles (bar/lightbox/shade/underline) following scroll & TTS line; auto‑follow (0020d31). |
-| **4 — OCR + multilingual** | 🚧 OCR shipped (4fb9650); lang‑ID + RTL **not implemented** | Scanned PDFs & languages | ML Kit OCR ✅; language auto‑detect → voice/script and RTL remain post‑1.0. |
+| **3 — Reading ruler** | ✅ shipped | Line focus | Ruler styles (bar/lightbox/shade/underline) following scroll & TTS line; auto‑follow. |
+| **4 — OCR + multilingual** | 🚧 OCR shipped; lang‑ID + RTL **not implemented** | Scanned PDFs & languages | ML Kit OCR ✅; language auto‑detect → voice/script and RTL remain post‑1.0. |
 | **5 — Extras** | post‑1.0 backlog | Personalization | BeeLine gradient, RSVP, syllables, OpenDyslexic, optional bionic toggle. |
 | **6 — Cloud (opt‑in)** | post‑1.0 backlog | Premium tier | Offline neural (sherpa_onnx) and/or cloud voices + cloud OCR for non‑Latin. |
 
@@ -282,6 +253,6 @@ implemented**. Phases 5–6 are post-1.0 backlog. Checkbox-level detail lives in
 ## 12. Open decisions (to confirm as we go)
 
 - Offline neural TTS (sherpa_onnx) vs cloud for the "premium voice" tier (Phase 6).
-- Whether to copy imported files into app storage vs keep content‑URIs (affects "survives reboot/permissions").
+- Copy imported files into app storage vs keep content‑URIs: **resolved** — copy (§8).
 - App name & package id: **resolved** — "Dyslexic Reader" / `com.dobosp.dyslexic_reader`.
 - Monetization: **resolved** — free, no ads, no IAP (on‑device is the differentiator).

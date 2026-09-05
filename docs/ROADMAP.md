@@ -4,10 +4,10 @@ Build order follows the evidence (see [RESEARCH.md](./RESEARCH.md) §1) and the
 architecture phases ([ARCHITECTURE.md](./ARCHITECTURE.md) §11). Highest-value,
 strongest-evidence features first.
 
-**Status (2026-07-02): v1.0 launch candidate** — the shipped scope below is
-feature-complete (verified status: README.md; publishing gate:
-[PUBLISHING.md](./PUBLISHING.md)). Everything still unchecked below =
-**post-1.0 backlog**, kept on record as what is intentionally not in v1.0.
+Staleness model: living checklist. Current state, open gates and the publishing
+checklist live in [`STATUS.md`](../STATUS.md) — this file records scope only:
+checked = shipped in v1.0, unchecked = **post-1.0 backlog**, kept on record as what
+is intentionally not in v1.0.
 
 ## Phase 0 — Foundation ✅
 - [x] Flutter project scaffold (Android), Material 3
@@ -62,10 +62,10 @@ Redefined with the product owner. Built in this order:
 ## Phase 3 — Reading ruler / line focus ✅
 - [x] Ruler styles: tint bar / underline / shade / spotlight (CHI-2023 set)
 - [x] Draggable focus band; text scrolls underneath (typoscope)
-- [x] Auto-follow the current read-aloud line — shipped (0020d31, 2026-06-27)
+- [x] Auto-follow the current read-aloud line — shipped 2026-06-27
 
 ## Phase 4 — OCR + multilingual 🚧 (OCR shipped; the rest = post-1.0)
-- [x] `google_mlkit_text_recognition` for scanned/image PDFs (auto-detect no text layer) — shipped (4fb9650)
+- [x] `google_mlkit_text_recognition` for scanned/image PDFs (auto-detect no text layer) — shipped 2026-05-30
 - [ ] `google_mlkit_language_id` → auto-pick TTS voice + OCR script
 - [ ] RTL (Arabic/Hebrew) reflow; Tesseract/cloud OCR for non-Latin scripts
 
@@ -83,7 +83,7 @@ Redefined with the product owner. Built in this order:
 ## Cross-cutting
 - [ ] iOS target (Flutter makes this incremental once native bridges have iOS impls)
 - [ ] Localized UI (`flutter_localizations`)
-- [x] Accessibility pass (TalkBack, dynamic type, contrast) — shipped (a924568)
+- [x] Accessibility pass (TalkBack, dynamic type, contrast) — shipped 2026-06-15
 - [x] Play Store listing assets + privacy policy — listing copy, feature graphic,
       icon & policy text done (docs/STORE_LISTING.md, docs/store/,
       docs/PRIVACY_POLICY.md); screenshots + hosted policy URL still in flight —

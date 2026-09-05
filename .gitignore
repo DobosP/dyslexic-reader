@@ -54,3 +54,8 @@ android/key.properties
 
 # Kotlin build session artifacts
 .kotlin/
+
+# Fleet task artifacts — not repo documentation (agent-ops docs/29-doc-governance.md §2)
+TASK_BRIEF.md
+TASK_RESULT.md
+SWARM_RESULT.md

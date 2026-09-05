@@ -1,4 +1,3 @@
-# Claude Code project context
-
-Read and follow [AGENTS.md](AGENTS.md) — the working agreement for this repo.
-Repo truth: its declared status doc; fleet view: the vault (`dobo-brain/paul-brain/NOW.md`).
+# Claude Code — dyslexic-reader
+@AGENTS.md
+Read and follow `AGENTS.md` (imported above). Current truth: `STATUS.md`; fleet view: vault `NOW.md`.
