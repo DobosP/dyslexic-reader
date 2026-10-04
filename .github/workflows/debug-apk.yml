@@ -2,10 +2,9 @@ name: debug-apk
 
 # Builds an installable DEBUG APK and publishes it to a rolling "debug-latest"
 # GitHub Release so it can be downloaded and tested directly (no need to dig
-# into Actions artifacts). Runs on every push to main, and on demand.
+# into Actions artifacts). Runs only on manual dispatch.
+# Run from Actions > Run workflow only when requested or needed for a specific change.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -51,7 +50,7 @@ jobs:
           prerelease: true
           files: build/app/outputs/flutter-apk/app-debug.apk
           body: |
-            Latest **debug** APK, auto-built from `main`.
+            Latest **debug** APK, built from a manually selected ref.
 
             - Commit: `${{ github.sha }}`
             - Install on Android with "unknown sources" enabled (sideload).

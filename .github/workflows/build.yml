@@ -1,10 +1,7 @@
 name: build
 
+# Run from Actions > Run workflow only when requested or needed for a specific change.
 on:
-  push:
-    branches: ["main", "claude/**"]
-    tags: ["v*"]
-  pull_request:
   workflow_dispatch:
 
 jobs:

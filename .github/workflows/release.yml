@@ -1,9 +1,9 @@
 name: release
 
-# Continuous deployment to Google Play.
+# On-demand deployment to Google Play.
 #
-# Publishes a signed Android App Bundle to a Play track whenever you push/merge
-# to the `release` branch (and on manual dispatch, where you can pick the track).
+# Publishes a signed Android App Bundle only on manual dispatch. Select the
+# release branch and the Play track in the Actions tab.
 #
 # It only uploads when BOTH sets of secrets are configured (otherwise it just
 # builds and tells you what's missing), so the workflow is safe to commit before
@@ -11,9 +11,8 @@ name: release
 # for the one-time setup (upload keystore, Play service account, first manual
 # upload — which Google requires before the API will accept uploads).
 
+# Run from Actions > Run workflow only when requested or needed for a specific change.
 on:
-  push:
-    branches: ["release"]
   workflow_dispatch:
     inputs:
       track:
